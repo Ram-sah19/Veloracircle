@@ -9,12 +9,12 @@ import { SectionHeading } from "@/components/velora/primitives";
 export const Route = createFileRoute("/help")({
   head: () => ({
     meta: [
-      { title: "Help & Support — Velora Circle" },
+      { title: "Velora Circle" },
       {
         name: "description",
         content: "Guides, privacy documentation and direct support for Velora Circle workspaces.",
       },
-      { property: "og:title", content: "Help & Support — Velora Circle" },
+      { property: "og:title", content: "Velora Circle" },
       { property: "og:description", content: "Answers, guides and private support." },
     ],
   }),

@@ -11,7 +11,7 @@ import {
   Users,
   Lock,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -28,19 +28,25 @@ import { AppShell } from "@/components/velora/app-shell";
 import { PrivacyToggle } from "@/components/velora/modals";
 import { Avatar, SectionHeading } from "@/components/velora/primitives";
 import { useTheme } from "@/components/velora/theme";
-import { currentUser } from "@/lib/mock-data";
+import {
+  currentUser,
+  getStoredAuth,
+  getStoredInvitations,
+  saveAuthSession,
+  saveStoredInvitations,
+} from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({
     meta: [
-      { title: "Settings — Velora Circle" },
+      { title: "Velora Circle" },
       {
         name: "description",
         content:
           "Control account, privacy, notification, security and appearance preferences in Velora Circle.",
       },
-      { property: "og:title", content: "Settings — Velora Circle" },
+      { property: "og:title", content: "Velora Circle" },
       { property: "og:description", content: "Privacy-first preferences and controls." },
     ],
   }),
@@ -61,6 +67,106 @@ const sections = [
 function SettingsPage() {
   const [active, setActive] = useState<(typeof sections)[number]["key"]>("privacy");
   const { theme, setTheme } = useTheme();
+  const [user, setUser] = useState(() => getStoredAuth().user || currentUser);
+  const [displayName, setDisplayName] = useState(user.name);
+  const [userStatus, setUserStatus] = useState(user.status);
+  const [userDesignation, setUserDesignation] = useState(user.designation || "trainee");
+
+  useEffect(() => {
+    const handleAuthChange = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && detail.user) {
+        setUser(detail.user);
+        setDisplayName(detail.user.name);
+        setUserStatus(detail.user.status);
+        setUserDesignation(detail.user.designation || "trainee");
+      }
+    };
+    window.addEventListener("velora_auth_changed", handleAuthChange);
+    return () => window.removeEventListener("velora_auth_changed", handleAuthChange);
+  }, []);
+
+  const handleSaveProfile = async () => {
+    const token = getStoredAuth().token || "token";
+    const newName = displayName.trim() || user.name;
+    const newInitials = newName
+      .split(" ")
+      .map((n) => n[0])
+      .slice(0, 2)
+      .join("")
+      .toUpperCase();
+
+    const updatedUser = {
+      ...user,
+      name: newName,
+      status: userStatus.trim() || user.status,
+      designation: userDesignation,
+      initials: newInitials,
+    };
+    saveAuthSession(updatedUser, token);
+
+    // 1. Sync to backend MongoDB if token exists
+    if (token && token !== "token") {
+      try {
+        await fetch("http://localhost:5000/api/auth/profile", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            name: newName,
+            status: updatedUser.status,
+            designation: userDesignation,
+          }),
+        });
+      } catch (err) {
+        console.warn("Backend profile sync warning:", err);
+      }
+    }
+
+    // 2. Sync to active mentorship invitations
+    const invs = getStoredInvitations();
+    let invsChanged = false;
+    const userPrefix = user.email ? user.email.split("@")[0].toLowerCase() : "";
+    const updatedInvs = invs.map((inv) => {
+      let modified = false;
+      const copy = { ...inv, sender: { ...inv.sender }, recipient: { ...inv.recipient } };
+      if (
+        (copy.sender.email && user.email && copy.sender.email.toLowerCase() === user.email.toLowerCase()) ||
+        copy.sender.handle === user.handle ||
+        copy.sender.id === user.id ||
+        (userPrefix && copy.sender.name.toLowerCase() === userPrefix) ||
+        (userPrefix && copy.sender.handle.toLowerCase() === `@${userPrefix}`)
+      ) {
+        copy.sender.name = newName;
+        copy.sender.initials = newInitials;
+        copy.sender.designation = userDesignation;
+        if (user.email) copy.sender.email = user.email;
+        modified = true;
+      }
+      if (
+        (copy.recipient.email && user.email && copy.recipient.email.toLowerCase() === user.email.toLowerCase()) ||
+        copy.recipient.handle === user.handle ||
+        copy.recipient.id === user.id ||
+        (userPrefix && copy.recipient.name.toLowerCase() === userPrefix) ||
+        (userPrefix && copy.recipient.handle.toLowerCase() === `@${userPrefix}`)
+      ) {
+        copy.recipient.name = newName;
+        copy.recipient.initials = newInitials;
+        copy.recipient.designation = userDesignation;
+        if (user.email) copy.recipient.email = user.email;
+        modified = true;
+      }
+      if (modified) invsChanged = true;
+      return copy;
+    });
+    if (invsChanged) {
+      saveStoredInvitations(updatedInvs);
+    }
+
+    toast.success("Account profile updated and synced successfully!");
+  };
 
   return (
     <AppShell>
@@ -100,23 +206,51 @@ function SettingsPage() {
             {active === "account" && (
               <div className="surface-panel space-y-5 rounded-2xl p-5">
                 <div className="flex items-center gap-4">
-                  <Avatar initials={currentUser.initials} size="lg" tone="brand" />
+                  <Avatar initials={user.initials} size="lg" tone="brand" />
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">{currentUser.name}</p>
-                    <p className="text-muted-foreground truncate text-xs">{currentUser.email}</p>
+                    <p className="truncate text-sm font-semibold">{user.name}</p>
+                    <p className="text-muted-foreground truncate text-xs flex items-center gap-2">
+                      <span>{user.email}</span>
+                      <span className="capitalize px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary border border-primary/20">
+                        {user.designation === "mentor" ? "Mentor" : "Intern / Trainee"}
+                      </span>
+                    </p>
                   </div>
                 </div>
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-3">
                   <div className="space-y-2">
                     <Label htmlFor="display-name">Display name</Label>
-                    <Input id="display-name" defaultValue={currentUser.name} />
+                    <Input
+                      id="display-name"
+                      value={displayName}
+                      onChange={(e) => setDisplayName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="designation">Role / Track</Label>
+                    <Select
+                      value={userDesignation}
+                      onValueChange={(val) => setUserDesignation(val)}
+                    >
+                      <SelectTrigger id="designation" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="mentor">Mentor</SelectItem>
+                        <SelectItem value="intern">Intern / Trainee</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="status">Status</Label>
-                    <Input id="status" defaultValue={currentUser.status} />
+                    <Input
+                      id="status"
+                      value={userStatus}
+                      onChange={(e) => setUserStatus(e.target.value)}
+                    />
                   </div>
                 </div>
-                <Button onClick={() => toast.success("Account updated")}>Save changes</Button>
+                <Button onClick={handleSaveProfile}>Save changes</Button>
               </div>
             )}
 

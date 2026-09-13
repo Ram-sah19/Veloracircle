@@ -12,6 +12,7 @@ import {
   Smile,
   Bookmark,
   Trash2,
+  Video,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -100,7 +101,7 @@ function MessageActions() {
 }
 
 export function MessageBubble({ message }: { message: Message }) {
-  const self = message.self;
+  const self = Boolean(message.self);
   return (
     <div
       className={cn(
@@ -109,9 +110,11 @@ export function MessageBubble({ message }: { message: Message }) {
       )}
     >
       <Avatar initials={message.initials} size="sm" tone={self ? "brand" : "default"} />
-      <div className={cn("flex min-w-0 max-w-[min(560px,82%)] flex-col", self && "items-end")}>
-        <div className="text-muted-foreground mb-1 flex items-center gap-2 text-[11px]">
-          <span className="text-foreground/70 font-medium">{self ? "You" : message.author}</span>
+      <div className={cn("flex min-w-0 max-w-[min(560px,82%)] flex-col", self ? "items-end" : "items-start")}>
+        <div className={cn("text-muted-foreground mb-1 flex items-center gap-2 text-[11px]", self && "flex-row-reverse")}>
+          <span className={cn("font-medium", self ? "text-primary font-semibold" : "text-foreground font-semibold")}>
+            {self ? "You" : message.author}
+          </span>
           <span>{message.time}</span>
           <MessageActions />
         </div>
@@ -159,7 +162,32 @@ export function MessageBubble({ message }: { message: Message }) {
               <span className="text-muted-foreground text-[11px]">0:42</span>
             </div>
           ) : (
-            message.body
+            <>
+              <div>{message.body}</div>
+              {(() => {
+                const meetingMatch = message.body?.match(/(?:https?:\/\/[^\s]+)?(\/meeting\/(vel-[a-z0-9-]+))/i);
+                if (!meetingMatch) return null;
+                const meetingPath = meetingMatch[1];
+                return (
+                  <div className="mt-2.5 rounded-xl border border-primary/30 bg-primary/10 p-3 space-y-2">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-primary">
+                      <Video className="h-4 w-4" />
+                      <span>1:1 Video Meeting Invitation</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Encrypted peer-to-peer room ready to join.
+                    </p>
+                    <a
+                      href={meetingPath}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-sm hover:brightness-110 active:scale-95 transition-all"
+                    >
+                      <Video className="h-3.5 w-3.5" />
+                      <span>Join Meeting Room</span>
+                    </a>
+                  </div>
+                );
+              })()}
+            </>
           )}
         </div>
 
@@ -180,12 +208,21 @@ export function MessageBubble({ message }: { message: Message }) {
   );
 }
 
-export function MessageComposer({ placeholder = "Message…" }: { placeholder?: string }) {
+export function MessageComposer({
+  placeholder = "Message…",
+  onSend,
+}: {
+  placeholder?: string;
+  onSend?: (body: string) => void;
+}) {
   const [value, setValue] = useState("");
 
   const send = () => {
-    if (!value.trim()) return;
-    toast.success("Message sent", { description: "Encrypted end-to-end" });
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    if (onSend) {
+      onSend(trimmed);
+    }
     setValue("");
   };
 

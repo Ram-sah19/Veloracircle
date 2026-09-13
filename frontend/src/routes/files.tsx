@@ -13,12 +13,12 @@ import { files } from "@/lib/mock-data";
 export const Route = createFileRoute("/files")({
   head: () => ({
     meta: [
-      { title: "Files — Velora Circle" },
+      { title: "Velora Circle" },
       {
         name: "description",
         content: "Secure file sharing across your private Circles and direct conversations.",
       },
-      { property: "og:title", content: "Files — Velora Circle" },
+      { property: "og:title", content: "Velora Circle" },
       { property: "og:description", content: "Secure, private file sharing." },
     ],
   }),

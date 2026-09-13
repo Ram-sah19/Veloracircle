@@ -13,13 +13,13 @@ import { getStoredMeetings, type Meeting } from "@/lib/mock-data";
 export const Route = createFileRoute("/meetings")({
   head: () => ({
     meta: [
-      { title: "Meetings — Velora Circle" },
+      { title: "Velora Circle" },
       {
         name: "description",
         content:
           "Schedule and join private video meetings. Participant lists stay hidden from attendees.",
       },
-      { property: "og:title", content: "Meetings — Velora Circle" },
+      { property: "og:title", content: "Velora Circle" },
       {
         property: "og:description",
         content: "Private, encrypted meetings for focused teams.",

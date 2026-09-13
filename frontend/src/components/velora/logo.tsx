@@ -9,20 +9,50 @@ export function VeloraMark({ className }: { className?: string }) {
       className={cn("h-8 w-8", className)}
     >
       <defs>
-        <linearGradient id="velora-mark" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="currentColor" />
-          <stop offset="100%" stopColor="currentColor" stopOpacity="0.55" />
+        <linearGradient id="velora-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="var(--primary, #3b82f6)" />
+          <stop offset="60%" stopColor="#60a5fa" />
+          <stop offset="100%" stopColor="#38bdf8" />
+        </linearGradient>
+        <linearGradient id="velora-glow" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="var(--primary, #3b82f6)" stopOpacity="0.4" />
+          <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.05" />
         </linearGradient>
       </defs>
-      <circle cx="16" cy="16" r="14.5" className="stroke-current opacity-25" fill="none" />
-      <path
-        d="M9 10.5 L16 22.5 L23 10.5"
+
+      {/* Subtle outer shield/halo ring */}
+      <circle
+        cx="16"
+        cy="16"
+        r="14.5"
+        fill="url(#velora-glow)"
+        className="stroke-primary/30"
+        strokeWidth="1"
+      />
+
+      {/* Internal precision orbit ring */}
+      <circle
+        cx="16"
+        cy="16"
+        r="11.5"
         fill="none"
-        stroke="url(#velora-mark)"
-        strokeWidth="2.6"
+        className="stroke-primary/20"
+        strokeWidth="0.8"
+        strokeDasharray="2 3"
+      />
+
+      {/* Core V-Chevron Geometry with rounded apex */}
+      <path
+        d="M8.5 10 L16 22 L23.5 10"
+        fill="none"
+        stroke="url(#velora-gradient)"
+        strokeWidth="2.8"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+
+      {/* Central focal node */}
+      <circle cx="16" cy="11" r="2.2" fill="url(#velora-gradient)" />
     </svg>
   );
 }

@@ -78,13 +78,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         name: "viewport",
         content: "width=device-width, initial-scale=1, viewport-fit=cover",
       },
-      { title: "Velora Circle — Private conversations" },
+      { title: "Velora Circle" },
       {
         name: "description",
         content:
           "Velora Circle is a privacy-first collaboration platform for private messaging, Circles, and secure meetings.",
       },
-      { name: "theme-color", content: "#1c1c1c" },
+      { name: "theme-color", content: "#0b0d14" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { property: "og:site_name", content: "Velora Circle" },
       { property: "og:type", content: "website" },
@@ -97,6 +97,11 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         rel: "stylesheet",
         href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@600;700;800&display=swap",
+      },
+      {
+        rel: "icon",
+        type: "image/svg+xml",
+        href: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%233b82f6'/%3E%3Cstop offset='100%25' stop-color='%2338bdf8'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='%230b0d14'/%3E%3Ccircle cx='16' cy='16' r='13' stroke='%233b82f6' stroke-width='1.2' stroke-opacity='0.4' fill='none'/%3E%3Ccircle cx='16' cy='16' r='10' stroke='%2338bdf8' stroke-width='0.8' stroke-opacity='0.25' stroke-dasharray='2 3' fill='none'/%3E%3Cpath d='M8.5 10 L16 22 L23.5 10' fill='none' stroke='url(%23g)' stroke-width='2.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='16' cy='11' r='2.2' fill='url(%23g)'/%3E%3C/svg%3E",
       },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
     ],

@@ -11,13 +11,13 @@ import { circles } from "@/lib/mock-data";
 export const Route = createFileRoute("/circles/")({
   head: () => ({
     meta: [
-      { title: "Circles — Velora Circle" },
+      { title: "Velora Circle" },
       {
         name: "description",
         content:
           "Private group spaces where member counts, directories and presence stay hidden from members.",
       },
-      { property: "og:title", content: "Circles — Velora Circle" },
+      { property: "og:title", content: "Velora Circle" },
       {
         property: "og:description",
         content: "Private spaces with restricted member visibility.",

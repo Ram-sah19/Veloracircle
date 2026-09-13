@@ -109,8 +109,10 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     database: {
       status: dbStatus,
+      readyState: mongoose.connection.readyState,
       host: mongoose.connection.host || null,
       name: mongoose.connection.name || null,
+      lastError: connectDB.getLastError ? connectDB.getLastError() : null,
     },
     features: {
       realTimeMessaging: 'Socket.io',
@@ -130,6 +132,42 @@ app.get('/', (req, res) => {
     healthCheck: '/api/health',
     docs: '/api/health',
   });
+});
+
+// Manual DB Reconnect Trigger
+app.post('/api/health/reconnect', async (req, res) => {
+  try {
+    await connectDB();
+    const ready = mongoose.connection.readyState;
+    res.json({
+      success: ready === 1,
+      readyState: ready,
+      status: ready === 1 ? 'connected' : 'disconnected',
+      host: mongoose.connection.host || null,
+      error: connectDB.getLastError ? connectDB.getLastError() : null,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// SMTP Test Trigger
+app.get('/api/health/test-smtp', async (req, res) => {
+  try {
+    const { sendOtpEmail } = require('./config/emailService');
+    const result = await sendOtpEmail({
+      email: process.env.SMTP_USER || 'veloraglobal.hr@gmail.com',
+      otp: '123456',
+    });
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message,
+      smtpUser: process.env.SMTP_USER,
+      passLength: process.env.SMTP_PASS ? process.env.SMTP_PASS.length : 0,
+    });
+  }
 });
 
 // Centralized Error Handling Middleware

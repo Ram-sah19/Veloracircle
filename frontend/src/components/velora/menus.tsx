@@ -14,6 +14,7 @@ import {
   UserPlus,
   UserRound,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -26,7 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Avatar, IconButton } from "@/components/velora/primitives";
 import { useTheme } from "@/components/velora/theme";
-import { currentUser, notifications } from "@/lib/mock-data";
+import { clearAuthSession, currentUser, notifications } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 const iconFor = {
@@ -100,6 +101,18 @@ export function NotificationsMenu() {
 
 export function UserMenu({ compact = false }: { compact?: boolean | undefined }) {
   const { theme, toggle } = useTheme();
+  const [auth, setAuth] = useState(currentUser);
+
+  useEffect(() => {
+    const handleAuthChange = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && detail.user) {
+        setAuth(detail.user);
+      }
+    };
+    window.addEventListener("velora_auth_changed", handleAuthChange);
+    return () => window.removeEventListener("velora_auth_changed", handleAuthChange);
+  }, []);
 
   return (
     <DropdownMenu>
@@ -112,12 +125,12 @@ export function UserMenu({ compact = false }: { compact?: boolean | undefined })
             compact ? "justify-center" : "w-full",
           )}
         >
-          <Avatar initials={currentUser.initials} size="sm" tone="brand" />
+          <Avatar initials={auth.initials} size="sm" tone="brand" />
           {!compact && (
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13px] font-medium">{currentUser.name}</span>
+              <span className="block truncate text-[13px] font-medium">{auth.name}</span>
               <span className="text-muted-foreground block truncate text-[11px]">
-                {currentUser.status}
+                {auth.status}
               </span>
             </span>
           )}
@@ -125,11 +138,11 @@ export function UserMenu({ compact = false }: { compact?: boolean | undefined })
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" side="top" className="w-64">
         <DropdownMenuLabel className="flex items-center gap-3 py-3">
-          <Avatar initials={currentUser.initials} tone="brand" />
+          <Avatar initials={auth.initials} tone="brand" />
           <span className="min-w-0">
-            <span className="block truncate text-sm font-semibold">{currentUser.name}</span>
+            <span className="block truncate text-sm font-semibold">{auth.name}</span>
             <span className="text-muted-foreground block truncate text-[11px] font-normal">
-              {currentUser.email}
+              {auth.email}
             </span>
           </span>
         </DropdownMenuLabel>
@@ -165,7 +178,13 @@ export function UserMenu({ compact = false }: { compact?: boolean | undefined })
           {theme === "dark" ? "Light mode" : "Dark mode"}
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link to="/">
+          <Link
+            to="/"
+            onClick={() => {
+              clearAuthSession();
+              toast.info("Signed out of Velora Circle");
+            }}
+          >
             <LogOut className="h-4 w-4" /> Sign out
           </Link>
         </DropdownMenuItem>

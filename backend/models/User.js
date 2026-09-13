@@ -24,9 +24,22 @@ const userSchema = new mongoose.Schema(
     },
     password: {
       type: String,
-      required: [true, 'Password is required'],
+      required: function () {
+        return !this.googleId && this.authProvider === 'local';
+      },
       minlength: [6, 'Password must be at least 6 characters'],
       select: false, // Never return password hash by default
+    },
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
+    authProvider: {
+      type: String,
+      enum: ['local', 'google', 'email_otp'],
+      default: 'local',
     },
     handle: {
       type: String,
@@ -51,6 +64,11 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: Object.values(ROLES),
       default: ROLES.MEMBER,
+    },
+    designation: {
+      type: String,
+      enum: ['mentor', 'intern', 'trainee', 'other'],
+      default: 'trainee',
     },
     status: {
       type: String,
@@ -102,7 +120,7 @@ userSchema.pre('save', async function (next) {
     this.handle = `@${base}`;
   }
 
-  if (!this.isModified('password')) {
+  if (!this.isModified('password') || !this.password) {
     return next();
   }
 

@@ -14,6 +14,7 @@ import {
   Settings,
   ShieldCheck,
   Users,
+  GraduationCap,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -22,11 +23,12 @@ import { CommandPalette } from "@/components/velora/command-palette";
 import { VeloraLogo } from "@/components/velora/logo";
 import { NotificationsMenu, ThemeToggle, UserMenu } from "@/components/velora/menus";
 import { Avatar } from "@/components/velora/primitives";
-import { currentUser } from "@/lib/mock-data";
+import { currentUser, getStoredAuth } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 const mainNav = [
   { to: "/home", label: "Home", icon: Home },
+  { to: "/admin", label: "Mentorship", icon: GraduationCap },
   { to: "/messages", label: "Messages", icon: MessagesSquare },
   { to: "/circles", label: "Circles", icon: Users },
   { to: "/meetings", label: "Meetings", icon: CalendarClock },
@@ -36,6 +38,7 @@ const mainNav = [
 
 const mobileNav = [
   { to: "/home", label: "Home", icon: Home },
+  { to: "/admin", label: "Mentorship", icon: GraduationCap },
   { to: "/messages", label: "Messages", icon: MessagesSquare },
   { to: "/circles", label: "Circles", icon: Users },
   { to: "/meetings", label: "Meetings", icon: CalendarClock },
@@ -104,15 +107,6 @@ function SidebarBody({
         {mainNav.map((item) => (
           <NavLink key={item.label} {...item} collapsed={collapsed} onNavigate={onNavigate} />
         ))}
-
-        <div className="border-border my-3 border-t" />
-        <NavLink
-          to="/admin"
-          label="Management"
-          icon={ShieldCheck}
-          collapsed={collapsed}
-          onNavigate={onNavigate}
-        />
       </nav>
 
       <div className="space-y-1 px-3 pt-3 pb-4">
@@ -150,6 +144,18 @@ export function AppShell({
   const [collapsed, setCollapsed] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [user, setUser] = useState(() => getStoredAuth().user || currentUser);
+
+  useEffect(() => {
+    const handleAuthChange = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && detail.user) {
+        setUser(detail.user);
+      }
+    };
+    window.addEventListener("velora_auth_changed", handleAuthChange);
+    return () => window.removeEventListener("velora_auth_changed", handleAuthChange);
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -229,7 +235,7 @@ export function AppShell({
               <UserMenu compact />
             </div>
             <Link to="/settings" className="sm:hidden" aria-label="Profile">
-              <Avatar initials={currentUser.initials} size="sm" tone="brand" />
+              <Avatar initials={user.initials} size="sm" tone="brand" />
             </Link>
           </div>
         </header>

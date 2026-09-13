@@ -11,13 +11,13 @@ import { circles, currentUser, messageThread } from "@/lib/mock-data";
 export const Route = createFileRoute("/circles/$circleId")({
   head: () => ({
     meta: [
-      { title: "Private Circle — Velora Circle" },
+      { title: "Velora Circle" },
       {
         name: "description",
         content:
           "A private Circle conversation. Member directory hidden, member count hidden, invitations restricted.",
       },
-      { property: "og:title", content: "Private Circle — Velora Circle" },
+      { property: "og:title", content: "Velora Circle" },
       {
         property: "og:description",
         content: "Private space · Member directory hidden.",

@@ -10,12 +10,12 @@ import { files, savedLinks, savedMessages } from "@/lib/mock-data";
 export const Route = createFileRoute("/saved")({
   head: () => ({
     meta: [
-      { title: "Saved — Velora Circle" },
+      { title: "Velora Circle" },
       {
         name: "description",
         content: "Saved messages, files and links from your private Velora conversations.",
       },
-      { property: "og:title", content: "Saved — Velora Circle" },
+      { property: "og:title", content: "Velora Circle" },
       { property: "og:description", content: "Everything you kept, privately." },
     ],
   }),

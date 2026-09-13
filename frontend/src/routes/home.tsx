@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { CalendarPlus, MessageSquarePlus, Plus, ShieldCheck } from "lucide-react";
+import { CalendarPlus, GraduationCap, MessageSquarePlus, Plus, ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -9,18 +9,18 @@ import { ConversationItem } from "@/components/velora/chat";
 import { CreateCircleModal, ScheduleMeetingModal } from "@/components/velora/modals";
 import { NewMeetingMenu } from "@/components/velora/new-meeting-menu";
 import { PrivacyBadge, SectionHeading } from "@/components/velora/primitives";
-import { circles, conversations, currentUser, getStoredMeetings, type Meeting } from "@/lib/mock-data";
+import { circles, conversations, currentUser, getStoredAuth, getStoredMeetings, type Meeting } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/home")({
   head: () => ({
     meta: [
-      { title: "Home — Velora Circle" },
+      { title: "Velora Circle" },
       {
         name: "description",
         content:
           "Your private Velora workspace: upcoming meetings, recent conversations and private spaces in one place.",
       },
-      { property: "og:title", content: "Home — Velora Circle" },
+      { property: "og:title", content: "Velora Circle" },
       {
         property: "og:description",
         content: "Your private workspace, all in one place.",
@@ -32,9 +32,18 @@ export const Route = createFileRoute("/home")({
 
 function HomePage() {
   const [meetingList, setMeetingList] = useState<Meeting[]>([]);
+  const [user, setUser] = useState(() => getStoredAuth().user || currentUser);
 
   useEffect(() => {
     setMeetingList(getStoredMeetings());
+    const handleAuthChange = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && detail.user) {
+        setUser(detail.user);
+      }
+    };
+    window.addEventListener("velora_auth_changed", handleAuthChange);
+    return () => window.removeEventListener("velora_auth_changed", handleAuthChange);
   }, []);
 
   const upcoming = meetingList.filter((m) => m.group !== "past").slice(0, 2);
@@ -86,13 +95,18 @@ function HomePage() {
         <header className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
           <div className="min-w-0">
             <h1 className="text-2xl font-bold sm:text-3xl">
-              Good morning, {currentUser.name.split(" ")[0]}
+              Good morning, {user.name.split(" ")[0]}
             </h1>
             <p className="text-muted-foreground mt-1.5 text-sm">
               Your private workspace, all in one place.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" asChild>
+              <Link to="/admin">
+                <GraduationCap className="h-4 w-4" /> Mentorship Network
+              </Link>
+            </Button>
             <NewMeetingMenu />
             <Button variant="outline" asChild>
               <Link to="/messages">

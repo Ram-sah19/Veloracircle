@@ -1,21 +1,39 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { ArrowRight, Lock, ShieldCheck, EyeOff } from "lucide-react";
+import { ArrowRight, Lock, ShieldCheck, Eye, EyeOff, Loader2, Mail, KeyRound, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { VeloraLogo } from "@/components/velora/logo";
+import { getStoredAuth, saveAuthSession } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Sign in — Velora Circle" },
+      { title: "Velora Circle" },
       {
         name: "description",
         content:
           "Sign in to Velora Circle. Private conversations, hidden member directories, and secure meetings for focused teams.",
       },
-      { property: "og:title", content: "Sign in — Velora Circle" },
+      { property: "og:title", content: "Velora Circle" },
       {
         property: "og:description",
         content: "Connect, meet, and collaborate without unnecessary visibility.",
@@ -56,6 +74,163 @@ function NodeArt() {
 
 function WelcomePage() {
   const navigate = useNavigate();
+  const [authMode, setAuthMode] = useState<"otp" | "password">("otp");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  // OTP flow state
+  const [otpModalOpen, setOtpModalOpen] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [otpEmail, setOtpEmail] = useState("");
+  const [otpName, setOtpName] = useState("");
+  const [otpPassword, setOtpPassword] = useState("");
+  const [otpConfirmPassword, setOtpConfirmPassword] = useState("");
+  const [showOtpPassword, setShowOtpPassword] = useState(false);
+  const [showOtpConfirmPassword, setShowOtpConfirmPassword] = useState(false);
+  const [otpDesignation, setOtpDesignation] = useState<"mentor" | "intern">("intern");
+  const [devOtpHint, setDevOtpHint] = useState<string | null>(null);
+
+  // Check existing session on mount
+  useEffect(() => {
+    const session = getStoredAuth();
+    if (session && session.token && session.user) {
+      void navigate({ to: "/home" });
+    }
+  }, [navigate]);
+
+  // Request OTP from backend
+  const handleSendOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !email.includes("@")) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+
+    setLoading(true);
+    setDevOtpHint(null);
+    try {
+      const res = await fetch("http://localhost:5000/api/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setOtpEmail(email.trim().toLowerCase());
+        setOtpCode("");
+        setOtpPassword("");
+        setOtpConfirmPassword("");
+        setShowOtpPassword(false);
+        setShowOtpConfirmPassword(false);
+        setOtpDesignation("intern");
+        setDevOtpHint(data.devCode || null);
+        setOtpModalOpen(true);
+        if (data.emailDispatched) {
+          toast.success(`Verification code emailed to ${email}! Check your inbox.`);
+        } else {
+          toast.success("Verification code generated! (Dev mode: check console or hint below)");
+        }
+      } else {
+        toast.error(data.error || "Failed to send verification code");
+      }
+    } catch {
+      // Offline fallback simulation
+      const mockCode = Math.floor(100000 + Math.random() * 900000).toString();
+      setOtpEmail(email.trim().toLowerCase());
+      setOtpCode("");
+      setOtpPassword("");
+      setOtpConfirmPassword("");
+      setShowOtpPassword(false);
+      setShowOtpConfirmPassword(false);
+      setDevOtpHint(mockCode);
+      setOtpModalOpen(true);
+      toast.info(`Development Mode: Your verification code is ${mockCode}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Verify OTP & complete login
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otpCode || otpCode.trim().length !== 6) {
+      toast.error("Please enter the complete 6-digit verification code");
+      return;
+    }
+
+    // Password & Confirm Password Validation
+    if (otpPassword || otpConfirmPassword) {
+      if (otpPassword.length < 6) {
+        toast.error("Password must be at least 6 characters long");
+        return;
+      }
+      if (otpPassword !== otpConfirmPassword) {
+        toast.error("Passwords do not match. Please check and re-enter.");
+        return;
+      }
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch("http://localhost:5000/api/auth/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: otpEmail,
+          otp: otpCode.trim(),
+          name: otpName.trim() || undefined,
+          password: otpPassword.trim() || undefined,
+          designation: otpDesignation,
+        }),
+      });
+      const data = await res.json();
+
+      if (data.success && data.token) {
+        saveAuthSession(data.user, data.token);
+        toast.success(`Welcome to Velora Circle, ${data.user.name}!`);
+        setOtpModalOpen(false);
+        void navigate({ to: "/home" });
+      } else {
+        toast.error(data.error || "Invalid verification code");
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to verify code with server. Please check MongoDB connection.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStandardLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) {
+      toast.error("Please provide both email and password");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch("http://localhost:5000/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+
+      if (data.success && data.token) {
+        saveAuthSession(data.user, data.token);
+        toast.success(`Welcome back, ${data.user.name}`);
+        void navigate({ to: "/home" });
+      } else {
+        toast.error(data.error || "Invalid email or password");
+      }
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to connect to authentication server. Please check backend.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="mesh-bg bg-background relative min-h-[100dvh] overflow-hidden">
@@ -90,71 +265,272 @@ function WelcomePage() {
         </section>
 
         <section className="glass relative z-10 rounded-3xl p-6 shadow-[var(--shadow-float)] sm:p-8">
-          <h2 className="text-lg font-semibold">Welcome back</h2>
+          <h2 className="text-lg font-semibold">Welcome to Velora</h2>
           <p className="text-muted-foreground mt-1 text-xs">
-            Sign in to your private workspace.
+            Passwordless email verification and secure access.
           </p>
 
-          <form
-            className="mt-7 space-y-4"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void navigate({ to: "/home" });
-            }}
-          >
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" placeholder="you@company.com" autoComplete="email" />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password">Password</Label>
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:text-foreground text-[11px] transition-colors"
-                >
-                  Forgot password?
-                </button>
-              </div>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                autoComplete="current-password"
-              />
-            </div>
+          {/* Auth Method Tabs */}
+          <div className="mt-5 grid grid-cols-2 gap-1 rounded-xl bg-surface-2 p-1 text-xs font-medium border border-border/70">
+            <button
+              type="button"
+              onClick={() => setAuthMode("otp")}
+              className={`flex items-center justify-center gap-1.5 py-1.5 rounded-lg transition-all ${
+                authMode === "otp"
+                  ? "bg-primary text-primary-foreground shadow-sm font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              <span>Email + OTP</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setAuthMode("password")}
+              className={`flex items-center justify-center gap-1.5 py-1.5 rounded-lg transition-all ${
+                authMode === "password"
+                  ? "bg-primary text-primary-foreground shadow-sm font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <KeyRound className="h-3.5 w-3.5" />
+              <span>Password</span>
+            </button>
+          </div>
 
-            <Button type="submit" className="h-11 w-full">
-              Continue <ArrowRight className="h-4 w-4" />
-            </Button>
-
-            <div className="text-muted-foreground flex items-center gap-3 text-[11px]">
-              <span className="bg-border h-px flex-1" />
-              or
-              <span className="bg-border h-px flex-1" />
-            </div>
-
-            <Button type="button" variant="outline" className="h-11 w-full" asChild>
-              <Link to="/home">
-                <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden>
-                  <path
-                    fill="currentColor"
-                    d="M21.35 11.1H12v2.98h5.35c-.23 1.4-1.63 4.11-5.35 4.11-3.22 0-5.85-2.66-5.85-5.94S8.78 6.31 12 6.31c1.83 0 3.06.78 3.76 1.45l2.56-2.47C16.68 3.74 14.53 2.8 12 2.8 6.98 2.8 2.9 6.87 2.9 11.9S6.98 21 12 21c5.77 0 9.6-4.05 9.6-9.76 0-.65-.08-1.15-.25-1.64Z"
+          {authMode === "otp" ? (
+            /* Email + OTP Form */
+            <form className="mt-5 space-y-4" onSubmit={handleSendOtp}>
+              <div className="space-y-2">
+                <Label htmlFor="otp-email-input">Email Address</Label>
+                <div className="relative">
+                  <Input
+                    id="otp-email-input"
+                    type="email"
+                    placeholder="you@company.com"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    className="pr-10"
                   />
-                </svg>
-                Continue with Google
-              </Link>
-            </Button>
-          </form>
+                  <Mail className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                </div>
+                <p className="text-[11px] text-muted-foreground">
+                  We will send a 6-digit one-time code to verify your identity.
+                </p>
+              </div>
+
+              <Button type="submit" className="h-11 w-full gap-2" disabled={loading}>
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                <span>Continue with Email</span>
+                {!loading && <ArrowRight className="h-4 w-4" />}
+              </Button>
+            </form>
+          ) : (
+            /* Standard Password Form */
+            <form className="mt-5 space-y-4" onSubmit={handleStandardLogin}>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="you@company.com"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="password">Password</Label>
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-foreground text-[11px] transition-colors"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+
+              <Button type="submit" className="h-11 w-full" disabled={loading}>
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Sign In with Password"}
+                {!loading && <ArrowRight className="h-4 w-4" />}
+              </Button>
+            </form>
+          )}
 
           <p className="text-muted-foreground mt-6 text-center text-xs">
-            New to Velora?{" "}
-            <Link to="/home" className="text-primary font-medium hover:underline">
-              Create account
-            </Link>
+            Secure · Encrypted · No unsolicited directory exposure
           </p>
         </section>
       </div>
+
+      {/* OTP Verification Modal */}
+      <Dialog open={otpModalOpen} onOpenChange={setOtpModalOpen}>
+        <DialogContent className="sm:max-w-md bg-card border-border">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/10 border border-primary/20 text-primary">
+                <Sparkles className="h-5 w-5" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-semibold">Enter Verification Code</DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground">
+                  Sent to <span className="font-medium text-foreground">{otpEmail}</span>
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <form onSubmit={handleVerifyOtp} className="space-y-4 pt-2">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="otp-name" className="text-xs font-semibold">Full Name</Label>
+                <Input
+                  id="otp-name"
+                  placeholder="e.g. Akash Chaudhary"
+                  value={otpName}
+                  onChange={(e) => setOtpName(e.target.value)}
+                  autoFocus
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="otp-designation" className="text-xs font-semibold">Role / Track</Label>
+                <Select
+                  value={otpDesignation}
+                  onValueChange={(val: "mentor" | "intern") => setOtpDesignation(val)}
+                >
+                  <SelectTrigger id="otp-designation" className="h-9">
+                    <SelectValue placeholder="Select role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mentor">Mentor</SelectItem>
+                    <SelectItem value="intern">Intern / Trainee</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="otp-password" className="text-xs font-semibold">
+                  Password <span className="font-normal text-[10px] text-muted-foreground">(Optional)</span>
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="otp-password"
+                    type={showOtpPassword ? "text" : "password"}
+                    placeholder="Min. 6 characters"
+                    value={otpPassword}
+                    onChange={(e) => setOtpPassword(e.target.value)}
+                    autoComplete="new-password"
+                    className="pr-9 text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowOtpPassword(!showOtpPassword)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showOtpPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="otp-confirm-password" className="text-xs font-semibold">
+                  Confirm Password
+                </Label>
+                <div className="relative">
+                  <Input
+                    id="otp-confirm-password"
+                    type={showOtpConfirmPassword ? "text" : "password"}
+                    placeholder="Re-enter password"
+                    value={otpConfirmPassword}
+                    onChange={(e) => setOtpConfirmPassword(e.target.value)}
+                    autoComplete="new-password"
+                    className={`pr-9 text-xs ${
+                      otpConfirmPassword && otpPassword !== otpConfirmPassword
+                        ? "border-destructive focus-visible:ring-destructive"
+                        : otpConfirmPassword && otpPassword === otpConfirmPassword
+                        ? "border-emerald-500/70 focus-visible:ring-emerald-500"
+                        : ""
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowOtpConfirmPassword(!showOtpConfirmPassword)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {showOtpConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {otpConfirmPassword && otpPassword !== otpConfirmPassword && (
+              <p className="text-[11px] text-destructive -mt-1 font-medium">
+                Passwords do not match.
+              </p>
+            )}
+
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="otp-code" className="text-xs font-semibold">6-Digit Verification Code</Label>
+                <span className="text-[10px] text-muted-foreground">Sent to your email</span>
+              </div>
+              <Input
+                id="otp-code"
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="123456"
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ""))}
+                className="text-center tracking-[0.4em] text-lg font-mono font-bold h-12"
+                required
+              />
+            </div>
+
+            <div className="rounded-xl border border-border/70 bg-surface/50 p-3 text-[11px] text-muted-foreground flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0" />
+              <span>Setting a password allows you to log in instantly anytime without waiting for an OTP.</span>
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0 pt-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setOtpModalOpen(false)}
+                disabled={loading}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={
+                  loading ||
+                  otpCode.length !== 6 ||
+                  (!!otpPassword && otpPassword.length < 6) ||
+                  (!!otpPassword && otpPassword !== otpConfirmPassword)
+                }
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}
+                Verify & Sign In
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

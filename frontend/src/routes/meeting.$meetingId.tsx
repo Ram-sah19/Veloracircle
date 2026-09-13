@@ -14,8 +14,10 @@ import {
   MonitorX,
   MessageSquare,
   PhoneOff,
+  Send,
   Smile,
   UserCheck,
+  UserPlus,
   Users,
   UserX,
   Video,
@@ -40,19 +42,27 @@ import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { VeloraLogo } from "@/components/velora/logo";
 import { Avatar, IconButton, PrivacyBadge, SecureIndicator } from "@/components/velora/primitives";
-import { currentUser, getStoredMeetings, type Meeting } from "@/lib/mock-data";
+import {
+  currentUser,
+  ensureDirectConversation,
+  getStoredInvitations,
+  getStoredMeetings,
+  saveStoredMessage,
+  type Meeting,
+  type MentorshipInvitation,
+} from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/meeting/$meetingId")({
   head: () => ({
     meta: [
-      { title: "Meeting room — Velora Circle" },
+      { title: "Velora Circle" },
       {
         name: "description",
         content:
           "Secure, private meeting room. Participant counts stay hidden from attendees; hosts manage access.",
       },
-      { property: "og:title", content: "Meeting room — Velora Circle" },
+      { property: "og:title", content: "Velora Circle" },
       { property: "og:description", content: "Secure meeting · Private participants." },
     ],
   }),
@@ -219,7 +229,54 @@ function MeetingRoom() {
   const [handRaised, setHandRaised] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [peopleOpen, setPeopleOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [activeMentorships, setActiveMentorships] = useState<MentorshipInvitation[]>([]);
   const [copiedLink, setCopiedLink] = useState(false);
+
+  // Load mentorship partners for meeting invitation
+  useEffect(() => {
+    if (inviteOpen) {
+      const invs = getStoredInvitations().filter((i) => i.status === "accepted");
+      setActiveMentorships(invs);
+    }
+  }, [inviteOpen]);
+
+  const handleSendMeetingInvite = (
+    conn: MentorshipInvitation,
+    partner: MentorshipInvitation["recipient"] | MentorshipInvitation["sender"]
+  ) => {
+    const convoId = conn.conversationId || `dm_${conn.id}`;
+    const isMentor = currentUser.designation === "mentor";
+    const partnerRole = isMentor ? "Trainee" : "Mentor";
+    ensureDirectConversation({
+      id: convoId,
+      name: partner.name,
+      initials: partner.initials,
+      kind: "direct",
+      privacy: `Direct Mentorship · ${partnerRole}`,
+      partnerEmail: partner.email,
+      partnerRole,
+      preview: "Meeting Invitation",
+      time: "Just now",
+    });
+
+    const joinUrl = `${window.location.origin}/meeting/${meetingId}`;
+    saveStoredMessage(convoId, {
+      id: `msg_${Date.now()}`,
+      author: currentUser.name,
+      senderEmail: currentUser.email,
+      senderId: currentUser.id,
+      role: currentUser.designation || "member",
+      initials: currentUser.initials,
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      body: `📞 I'm currently in the meeting "${meeting.title}". Click here to join: ${joinUrl}`,
+      kind: "text",
+    });
+
+    toast.success(`Meeting invitation sent to ${partner.name}!`, {
+      description: "Direct chat message sent with instant join button.",
+    });
+  };
 
   // Chat & Reactions
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -1055,6 +1112,11 @@ function MeetingRoom() {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          <IconButton
+            icon={UserPlus}
+            label="Invite Mentee / Mentor"
+            onClick={() => setInviteOpen(true)}
+          />
           {isHost && (
             <IconButton
               icon={Users}
@@ -1309,6 +1371,94 @@ function MeetingRoom() {
           <DialogFooter>
             <Button variant="ghost" onClick={() => setBreakoutModalOpen(false)}>
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Invite Mentee / Mentor to Call Dialog */}
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <DialogContent className="glass sm:max-w-[460px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <UserPlus className="h-4 w-4 text-primary" />
+              <span>Invite Mentee or Mentor to This Call</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Quickly invite your active mentorship partners to join this live video session.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Active Mentorship Connections
+              </span>
+              {activeMentorships.length > 0 ? (
+                <div className="space-y-2">
+                  {activeMentorships.map((conn) => {
+                    const isSender =
+                      currentUser.handle?.toLowerCase() === conn.sender.handle.toLowerCase() ||
+                      currentUser.name?.toLowerCase() === conn.sender.name.toLowerCase() ||
+                      Boolean(
+                        currentUser.email &&
+                          conn.sender.name.toLowerCase() ===
+                            currentUser.email.split("@")[0].toLowerCase()
+                      );
+                    const partner = isSender ? conn.recipient : conn.sender;
+                    return (
+                      <div
+                        key={conn.id}
+                        className="flex items-center justify-between p-3 rounded-xl border border-border bg-surface-2/60"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <Avatar initials={partner.initials} size="sm" />
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold truncate">{partner.name}</p>
+                            <p className="text-[11px] text-muted-foreground truncate">
+                              {partner.handle} · {partner.designation === "mentor" ? "Mentor" : "Trainee"}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          className="h-8 gap-1.5 text-xs"
+                          onClick={() => handleSendMeetingInvite(conn, partner)}
+                        >
+                          <Send className="h-3.5 w-3.5" />
+                          <span>Invite</span>
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl border border-dashed border-border text-center text-xs text-muted-foreground">
+                  No active mentorship connections found. Mutual acceptance is required before direct inviting.
+                </div>
+              )}
+            </div>
+
+            {/* Quick Copy Room Link */}
+            <div className="p-3 rounded-xl border border-border bg-surface-2/40 space-y-2">
+              <span className="text-xs font-medium text-foreground">Or share room link directly:</span>
+              <div className="flex gap-2">
+                <input
+                  readOnly
+                  value={`${window.location.origin}/meeting/${meetingId}`}
+                  className="flex-1 bg-surface-1 border border-border rounded-lg px-2.5 py-1.5 text-xs font-mono text-muted-foreground select-all"
+                />
+                <Button size="sm" variant="outline" onClick={copyMeetingLink}>
+                  {copiedLink ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5" />}
+                  <span className="ml-1 text-xs">{copiedLink ? "Copied" : "Copy"}</span>
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button size="sm" variant="outline" onClick={() => setInviteOpen(false)}>
+              Done
             </Button>
           </DialogFooter>
         </DialogContent>
