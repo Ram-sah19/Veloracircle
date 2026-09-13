@@ -1,13 +1,11 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   Bookmark,
-  Boxes,
   CalendarClock,
   CircleUser,
   FolderClosed,
   Home,
   LifeBuoy,
-  Lock,
   Menu,
   MessagesSquare,
   PanelLeftClose,
@@ -34,12 +32,6 @@ const mainNav = [
   { to: "/meetings", label: "Meetings", icon: CalendarClock },
   { to: "/saved", label: "Saved", icon: Bookmark },
   { to: "/files", label: "Files", icon: FolderClosed },
-] as const;
-
-const workspaceNav = [
-  { to: "/home", label: "My Workspace", icon: Boxes },
-  { to: "/circles", label: "Private Spaces", icon: Lock },
-  { to: "/files", label: "Shared Projects", icon: FolderClosed },
 ] as const;
 
 const mobileNav = [
@@ -111,22 +103,6 @@ function SidebarBody({
       <nav className="scrollbar-slim min-h-0 flex-1 space-y-1 overflow-y-auto px-3">
         {mainNav.map((item) => (
           <NavLink key={item.label} {...item} collapsed={collapsed} onNavigate={onNavigate} />
-        ))}
-
-        <div className="border-border my-3 border-t" />
-
-        {!collapsed && (
-          <p className="text-muted-foreground px-3 pt-1 pb-2 text-[10px] tracking-[0.2em] uppercase">
-            Workspace
-          </p>
-        )}
-        {workspaceNav.map((item) => (
-          <NavLink
-            key={item.label}
-            {...item}
-            collapsed={collapsed}
-            onNavigate={onNavigate}
-          />
         ))}
 
         <div className="border-border my-3 border-t" />

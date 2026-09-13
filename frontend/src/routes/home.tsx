@@ -1,13 +1,15 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { CalendarPlus, MessageSquarePlus, Plus, ShieldCheck, Video } from "lucide-react";
+import { CalendarPlus, MessageSquarePlus, Plus, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { AppShell } from "@/components/velora/app-shell";
 import { CircleCard, MeetingCard } from "@/components/velora/cards";
 import { ConversationItem } from "@/components/velora/chat";
 import { CreateCircleModal, ScheduleMeetingModal } from "@/components/velora/modals";
+import { NewMeetingMenu } from "@/components/velora/new-meeting-menu";
 import { PrivacyBadge, SectionHeading } from "@/components/velora/primitives";
-import { circles, conversations, currentUser, meetings } from "@/lib/mock-data";
+import { circles, conversations, currentUser, getStoredMeetings, type Meeting } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/home")({
   head: () => ({
@@ -29,7 +31,13 @@ export const Route = createFileRoute("/home")({
 });
 
 function HomePage() {
-  const upcoming = meetings.filter((m) => m.group !== "past").slice(0, 2);
+  const [meetingList, setMeetingList] = useState<Meeting[]>([]);
+
+  useEffect(() => {
+    setMeetingList(getStoredMeetings());
+  }, []);
+
+  const upcoming = meetingList.filter((m) => m.group !== "past").slice(0, 2);
 
   return (
     <AppShell
@@ -84,12 +92,8 @@ function HomePage() {
               Your private workspace, all in one place.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button asChild>
-              <Link to="/meeting/$meetingId" params={{ meetingId: "product-strategy" }}>
-                <Video className="h-4 w-4" /> Start Meeting
-              </Link>
-            </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <NewMeetingMenu />
             <Button variant="outline" asChild>
               <Link to="/messages">
                 <MessageSquarePlus className="h-4 w-4" /> New Message
@@ -108,11 +112,17 @@ function HomePage() {
               </Button>
             }
           />
-          <div className="grid gap-4 md:grid-cols-2">
-            {upcoming.map((m) => (
-              <MeetingCard key={m.id} meeting={m} />
-            ))}
-          </div>
+          {upcoming.length > 0 ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              {upcoming.map((m) => (
+                <MeetingCard key={m.id} meeting={m} />
+              ))}
+            </div>
+          ) : (
+            <div className="surface-panel rounded-2xl p-6 text-center text-muted-foreground text-sm">
+              No meetings scheduled. Click &quot;New Meeting&quot; to start an instant meeting or schedule one.
+            </div>
+          )}
         </section>
 
         <section>

@@ -29,7 +29,14 @@ export const Route = createFileRoute("/circles/$circleId")({
 
 function CirclePage() {
   const { circleId } = useParams({ from: "/circles/$circleId" });
-  const circle = circles.find((c) => c.id === circleId) ?? circles[0]!;
+  const fallbackCircle = {
+    id: circleId,
+    name: "Private Circle",
+    privacy: "Private Circle",
+    activity: "Active recently",
+    description: "Private conversation space. Member directory hidden.",
+  };
+  const circle = circles.find((c) => c.id === circleId) ?? fallbackCircle;
   const isAdmin = currentUser.role === "admin" || currentUser.role === "owner";
 
   return (
@@ -107,9 +114,15 @@ function CirclePage() {
             <PrivacyBadge label="Member visibility restricted" tone="muted" icon={EyeOff} />
           </div>
 
-          {messageThread.map((m) => (
-            <MessageBubble key={m.id} message={m} />
-          ))}
+          {messageThread.length > 0 ? (
+            messageThread.map((m) => (
+              <MessageBubble key={m.id} message={m} />
+            ))
+          ) : (
+            <div className="py-12 text-center text-xs text-muted-foreground">
+              No messages in this Circle yet. Start the discussion below.
+            </div>
+          )}
         </div>
 
         <div className="pb-16 lg:pb-0">

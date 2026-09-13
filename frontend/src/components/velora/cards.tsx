@@ -47,19 +47,23 @@ export function CircleCard({ circle }: { circle: Circle }) {
 }
 
 export function MeetingCard({ meeting, past }: { meeting: Meeting; past?: boolean }) {
+  const hostName = typeof meeting.host === "object" && meeting.host ? meeting.host.name : (meeting.host || "Participant");
+  const timeLabel = meeting.day && meeting.time ? `${meeting.day} · ${meeting.time} · ${meeting.duration || "45 min"}` : `${new Date(meeting.scheduledAt || Date.now()).toLocaleDateString([], { month: "short", day: "numeric" })} · ${meeting.durationMinutes || 45} min`;
+  const privacyLabel = meeting.privacy || (meeting.isPrivate ? "Private Meeting" : "Open Meeting");
+
   return (
     <div className="surface-panel hover:border-border-strong rounded-2xl p-5 transition-all duration-200 hover:shadow-[var(--shadow-elevate)]">
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
         <div className="min-w-0">
           <h3 className="truncate text-sm font-semibold">{meeting.title}</h3>
           <p className="text-muted-foreground mt-1 truncate text-xs">
-            {meeting.day} · {meeting.time} · {meeting.duration}
+            {timeLabel}
           </p>
         </div>
-        <PrivacyBadge label={meeting.privacy} tone={past ? "muted" : "accent"} />
+        <PrivacyBadge label={privacyLabel} tone={past ? "muted" : "accent"} />
       </div>
       <div className="mt-5 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
-        <p className="text-muted-foreground truncate text-[11px]">Host · {meeting.host}</p>
+        <p className="text-muted-foreground truncate text-[11px]">Host · {hostName}</p>
         {past ? (
           <Button
             size="sm"

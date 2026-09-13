@@ -87,11 +87,12 @@ function AdminPage() {
                 className="pl-9"
               />
             </div>
-            <Select defaultValue={circles[0]!.id}>
+            <Select defaultValue={circles[0]?.id || "all"}>
               <SelectTrigger className="w-full" aria-label="Filter by Circle">
-                <SelectValue />
+                <SelectValue placeholder="All Circles" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="all">All Circles</SelectItem>
                 {circles.map((c) => (
                   <SelectItem key={c.id} value={c.id}>
                     {c.name}
@@ -102,54 +103,60 @@ function AdminPage() {
           </div>
 
           <div className="surface-panel overflow-x-auto rounded-2xl">
-            <table className="w-full min-w-[620px] text-left text-[13px]">
-              <thead>
-                <tr className="text-muted-foreground border-border border-b text-[11px] tracking-wider uppercase">
-                  <th className="px-4 py-3 font-medium">Member</th>
-                  <th className="px-4 py-3 font-medium">Role</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Joined</th>
-                  <th className="px-4 py-3 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {list.map((m) => (
-                  <tr key={m.id} className="border-border hover:bg-accent/30 border-b last:border-b-0">
-                    <td className="px-4 py-3">
-                      <div className="flex min-w-0 items-center gap-3">
-                        <Avatar initials={m.initials} size="sm" />
-                        <span className="truncate font-medium">{m.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <PrivacyBadge label={m.role} tone={m.role === "Owner" ? "accent" : "muted"} icon={Users} />
-                    </td>
-                    <td className="text-muted-foreground px-4 py-3">{m.status}</td>
-                    <td className="text-muted-foreground px-4 py-3">{m.joined}</td>
-                    <td className="px-4 py-3">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button size="sm" variant="ghost" aria-label={`Manage ${m.name}`}>
-                            Manage
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onSelect={() => toast("Role updated")}>
-                            Change role
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => toast("Access suspended")}>
-                            Suspend access
-                          </DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => toast("Member removed")}>
-                            Remove
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </td>
+            {list.length > 0 ? (
+              <table className="w-full min-w-[620px] text-left text-[13px]">
+                <thead>
+                  <tr className="text-muted-foreground border-border border-b text-[11px] tracking-wider uppercase">
+                    <th className="px-4 py-3 font-medium">Member</th>
+                    <th className="px-4 py-3 font-medium">Role</th>
+                    <th className="px-4 py-3 font-medium">Status</th>
+                    <th className="px-4 py-3 font-medium">Joined</th>
+                    <th className="px-4 py-3 font-medium">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {list.map((m) => (
+                    <tr key={m.id} className="border-border hover:bg-accent/30 border-b last:border-b-0">
+                      <td className="px-4 py-3">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <Avatar initials={m.initials} size="sm" />
+                          <span className="truncate font-medium">{m.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <PrivacyBadge label={m.role} tone={m.role === "Owner" ? "accent" : "muted"} icon={Users} />
+                      </td>
+                      <td className="text-muted-foreground px-4 py-3">{m.status}</td>
+                      <td className="text-muted-foreground px-4 py-3">{m.joined}</td>
+                      <td className="px-4 py-3">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button size="sm" variant="ghost" aria-label={`Manage ${m.name}`}>
+                              Manage
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onSelect={() => toast("Role updated")}>
+                              Change role
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => toast("Access suspended")}>
+                              Suspend access
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => toast("Member removed")}>
+                              Remove
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="p-8 text-center text-sm text-muted-foreground">
+                No members found. Use &quot;Invite member&quot; above to invite colleagues.
+              </div>
+            )}
           </div>
         </section>
       </div>

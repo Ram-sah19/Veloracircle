@@ -1,12 +1,14 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { CalendarPlus, CalendarX, Video } from "lucide-react";
+import { createFileRoute } from "@tanstack/react-router";
+import { CalendarPlus, CalendarX } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { AppShell } from "@/components/velora/app-shell";
 import { MeetingCard } from "@/components/velora/cards";
 import { ScheduleMeetingModal } from "@/components/velora/modals";
+import { NewMeetingMenu } from "@/components/velora/new-meeting-menu";
 import { EmptyState, SectionHeading } from "@/components/velora/primitives";
-import { meetings } from "@/lib/mock-data";
+import { getStoredMeetings, type Meeting } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/meetings")({
   head: () => ({
@@ -28,9 +30,15 @@ export const Route = createFileRoute("/meetings")({
 });
 
 function MeetingsPage() {
-  const today = meetings.filter((m) => m.group === "today");
-  const upcoming = meetings.filter((m) => m.group === "upcoming");
-  const past = meetings.filter((m) => m.group === "past");
+  const [meetingList, setMeetingList] = useState<Meeting[]>([]);
+
+  useEffect(() => {
+    setMeetingList(getStoredMeetings());
+  }, []);
+
+  const today = meetingList.filter((m) => m.group === "today");
+  const upcoming = meetingList.filter((m) => m.group === "upcoming");
+  const past = meetingList.filter((m) => m.group === "past");
 
   return (
     <AppShell>
@@ -42,12 +50,8 @@ function MeetingsPage() {
               Private meetings · Attendee lists are never disclosed.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button asChild>
-              <Link to="/meeting/$meetingId" params={{ meetingId: "product-strategy" }}>
-                <Video className="h-4 w-4" /> Start Instant Meeting
-              </Link>
-            </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <NewMeetingMenu />
             <ScheduleMeetingModal
               trigger={
                 <Button variant="outline">
@@ -76,23 +80,27 @@ function MeetingsPage() {
           )}
         </section>
 
-        <section>
-          <SectionHeading title="Upcoming" />
-          <div className="grid gap-4 md:grid-cols-2">
-            {upcoming.map((m) => (
-              <MeetingCard key={m.id} meeting={m} />
-            ))}
-          </div>
-        </section>
+        {upcoming.length > 0 && (
+          <section>
+            <SectionHeading title="Upcoming" />
+            <div className="grid gap-4 md:grid-cols-2">
+              {upcoming.map((m) => (
+                <MeetingCard key={m.id} meeting={m} />
+              ))}
+            </div>
+          </section>
+        )}
 
-        <section>
-          <SectionHeading title="Past" />
-          <div className="grid gap-4 md:grid-cols-2">
-            {past.map((m) => (
-              <MeetingCard key={m.id} meeting={m} past />
-            ))}
-          </div>
-        </section>
+        {past.length > 0 && (
+          <section>
+            <SectionHeading title="Past" />
+            <div className="grid gap-4 md:grid-cols-2">
+              {past.map((m) => (
+                <MeetingCard key={m.id} meeting={m} past />
+              ))}
+            </div>
+          </section>
+        )}
       </div>
     </AppShell>
   );

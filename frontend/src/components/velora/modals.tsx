@@ -23,16 +23,20 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { circles } from "@/lib/mock-data";
+import { circles, currentUser, generateMeetingId, saveMeeting, type Meeting } from "@/lib/mock-data";
 
 export function PrivacyToggle({
   label,
   description,
   defaultChecked = true,
+  checked,
+  onCheckedChange,
 }: {
   label: string;
   description?: string;
   defaultChecked?: boolean;
+  checked?: boolean;
+  onCheckedChange?: (checked: boolean) => void;
 }) {
   const id = label.replace(/\s+/g, "-").toLowerCase();
   return (
@@ -45,7 +49,12 @@ export function PrivacyToggle({
           <p className="text-muted-foreground mt-0.5 text-[11px] leading-relaxed">{description}</p>
         )}
       </div>
-      <Switch id={id} defaultChecked={defaultChecked} />
+      <Switch
+        id={id}
+        defaultChecked={checked === undefined ? defaultChecked : undefined}
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+      />
     </div>
   );
 }
@@ -124,19 +133,73 @@ export function CreateCircleModal({ trigger }: { trigger: ReactNode }) {
   );
 }
 
-export function ScheduleMeetingModal({ trigger }: { trigger: ReactNode }) {
-  const [open, setOpen] = useState(false);
+export function ScheduleMeetingModal({
+  trigger,
+  open: controlledOpen,
+  onOpenChange: setControlledOpen,
+}: {
+  trigger?: ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const [internalOpen, setInternalOpen] = useState(false);
   const [done, setDone] = useState(false);
 
+  const [title, setTitle] = useState("");
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
+  const [duration, setDuration] = useState("45");
+  const [circleId, setCircleId] = useState(circles[0]?.id || "general");
+  const [description, setDescription] = useState("");
+  const [isPrivate, setIsPrivate] = useState(true);
+  const [inviteOnly, setInviteOnly] = useState(false);
+  const [scheduledMeetingId, setScheduledMeetingId] = useState("");
+
+  const isOpen = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setOpen = (v: boolean) => {
+    if (setControlledOpen) {
+      setControlledOpen(v);
+    } else {
+      setInternalOpen(v);
+    }
+    if (!v) {
+      setTimeout(() => setDone(false), 200);
+    }
+  };
+
+  const handleSchedule = () => {
+    const meetingTitle = title.trim() || "Scheduled Discussion";
+    const newId = generateMeetingId();
+    setScheduledMeetingId(newId);
+
+    const newMeeting: Meeting = {
+      id: newId,
+      title: meetingTitle,
+      circleId: circleId === "general" ? undefined : circleId,
+      circleName: circleId === "general" ? "Direct Discussion" : circles.find((c) => c.id === circleId)?.name || "Circle",
+      scheduledAt: date && time ? `${date}T${time}:00Z` : new Date(Date.now() + 3600000).toISOString(),
+      durationMinutes: parseInt(duration, 10) || 45,
+      host: {
+        id: currentUser.id,
+        name: currentUser.name,
+      },
+      isPrivate,
+      inviteOnly,
+      participantCount: 1,
+      status: "upcoming",
+      meetingUrl: `${window.location.origin}/meeting/${newId}`,
+    };
+
+    saveMeeting(newMeeting);
+    setDone(true);
+    toast.success("Meeting scheduled", {
+      description: `Meeting ID: ${newId}. Invitations sent privately.`,
+    });
+  };
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        setOpen(v);
-        if (!v) setTimeout(() => setDone(false), 200);
-      }}
-    >
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+    <Dialog open={isOpen} onOpenChange={setOpen}>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent className="glass max-h-[90dvh] overflow-y-auto sm:max-w-[540px]">
         {done ? (
           <div className="flex flex-col items-center py-10 text-center">
@@ -147,9 +210,26 @@ export function ScheduleMeetingModal({ trigger }: { trigger: ReactNode }) {
             <DialogDescription className="mt-1.5 max-w-xs text-xs">
               Invitations were sent privately. Participants are not disclosed to attendees.
             </DialogDescription>
-            <Button className="mt-6" onClick={() => setOpen(false)}>
-              Done
-            </Button>
+            {scheduledMeetingId && (
+              <div className="mt-4 p-2.5 rounded-lg bg-surface-2 border border-border text-xs font-mono text-foreground select-all">
+                {window.location.origin}/meeting/{scheduledMeetingId}
+              </div>
+            )}
+            <div className="mt-6 flex gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  navigator.clipboard.writeText(`${window.location.origin}/meeting/${scheduledMeetingId}`);
+                  toast.success("Link copied to clipboard");
+                }}
+              >
+                Copy Link
+              </Button>
+              <Button size="sm" onClick={() => setOpen(false)}>
+                Done
+              </Button>
+            </div>
           </div>
         ) : (
           <>
@@ -165,20 +245,35 @@ export function ScheduleMeetingModal({ trigger }: { trigger: ReactNode }) {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="meeting-title">Meeting title</Label>
-                <Input id="meeting-title" placeholder="Product Strategy" />
+                <Input
+                  id="meeting-title"
+                  placeholder="Product Strategy"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
               </div>
               <div className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-2">
                   <Label htmlFor="meeting-date">Date</Label>
-                  <Input id="meeting-date" type="date" />
+                  <Input
+                    id="meeting-date"
+                    type="date"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="meeting-time">Time</Label>
-                  <Input id="meeting-time" type="time" />
+                  <Input
+                    id="meeting-time"
+                    type="time"
+                    value={time}
+                    onChange={(e) => setTime(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="meeting-duration">Duration</Label>
-                  <Select defaultValue="45">
+                  <Select value={duration} onValueChange={setDuration}>
                     <SelectTrigger id="meeting-duration" className="w-full">
                       <SelectValue />
                     </SelectTrigger>
@@ -193,11 +288,12 @@ export function ScheduleMeetingModal({ trigger }: { trigger: ReactNode }) {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="meeting-circle">Circle / participants</Label>
-                <Select defaultValue={circles[0]!.id}>
+                <Select value={circleId} onValueChange={setCircleId}>
                   <SelectTrigger id="meeting-circle" className="w-full">
-                    <SelectValue />
+                    <SelectValue placeholder="Select Circle" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="general">Direct / Workspace Meeting</SelectItem>
                     {circles.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
                         {c.name}
@@ -213,6 +309,8 @@ export function ScheduleMeetingModal({ trigger }: { trigger: ReactNode }) {
                   rows={3}
                   className="resize-none"
                   placeholder="Agenda and context"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
@@ -222,8 +320,15 @@ export function ScheduleMeetingModal({ trigger }: { trigger: ReactNode }) {
                 <PrivacyToggle
                   label="Private meeting"
                   description="Participant list is hidden from attendees."
+                  checked={isPrivate}
+                  onCheckedChange={setIsPrivate}
                 />
-                <PrivacyToggle label="Invite only" description="Link joining is disabled." />
+                <PrivacyToggle
+                  label="Invite only (Waiting Room)"
+                  description="Guests knock to join. Host must admit or deny each participant."
+                  checked={inviteOnly}
+                  onCheckedChange={setInviteOnly}
+                />
               </div>
             </div>
 
@@ -231,7 +336,7 @@ export function ScheduleMeetingModal({ trigger }: { trigger: ReactNode }) {
               <Button variant="ghost" onClick={() => setOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={() => setDone(true)}>Schedule Meeting</Button>
+              <Button onClick={handleSchedule}>Schedule Meeting</Button>
             </DialogFooter>
           </>
         )}

@@ -41,29 +41,45 @@ function SavedPage() {
           </TabsList>
 
           <TabsContent value="messages" className="mt-5 space-y-3">
-            {savedMessages.map((s) => (
-              <article key={s.id} className="surface-panel rounded-2xl p-4">
-                <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">
-                  <span className="bg-primary/10 text-primary grid h-9 w-9 place-items-center rounded-xl">
-                    <MessageSquare className="h-4 w-4" aria-hidden />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="truncate text-[13px] font-medium">{s.from}</p>
-                    <p className="text-muted-foreground truncate text-[11px]">{s.circle}</p>
+            {savedMessages.length > 0 ? (
+              savedMessages.map((s) => (
+                <article key={s.id} className="surface-panel rounded-2xl p-4">
+                  <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">
+                    <span className="bg-primary/10 text-primary grid h-9 w-9 place-items-center rounded-xl">
+                      <MessageSquare className="h-4 w-4" aria-hidden />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-[13px] font-medium">{s.from}</p>
+                      <p className="text-muted-foreground truncate text-[11px]">{s.circle}</p>
+                    </div>
+                    <span className="text-muted-foreground text-[11px]">{s.time}</span>
                   </div>
-                  <span className="text-muted-foreground text-[11px]">{s.time}</span>
-                </div>
-                <p className="text-foreground/85 mt-3 text-[13px] leading-relaxed">{s.body}</p>
-              </article>
-            ))}
+                  <p className="text-foreground/85 mt-3 text-[13px] leading-relaxed">{s.body}</p>
+                </article>
+              ))
+            ) : (
+              <EmptyState
+                icon={Bookmark}
+                title="No saved messages"
+                description="Save messages by hovering and selecting 'Save message'."
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="files" className="mt-5">
-            <div className="surface-panel overflow-hidden rounded-2xl">
-              {files.slice(0, 4).map((f) => (
-                <FileRow key={f.id} file={f} />
-              ))}
-            </div>
+            {files.length > 0 ? (
+              <div className="surface-panel overflow-hidden rounded-2xl">
+                {files.slice(0, 4).map((f) => (
+                  <FileRow key={f.id} file={f} />
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                icon={Bookmark}
+                title="No saved files"
+                description="Files you bookmark in conversations will appear here."
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="links" className="mt-5 space-y-3">
