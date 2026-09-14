@@ -297,17 +297,37 @@ function MessagesPage() {
       );
     };
 
-    const handleUserTyping = ({ conversationId, userName }: { conversationId: string; userName: string }) => {
-      if (activeIdRef.current === conversationId && userName) {
+    const handleUserTyping = ({ conversationId, originalConversationId, userName }: { conversationId: string; originalConversationId?: string; userName: string }) => {
+      const cur = activeIdRef.current;
+      if (!cur || !userName) return;
+      if (user.name && userName.toLowerCase() === user.name.toLowerCase()) return;
+
+      const isMatch =
+        cur === conversationId ||
+        (originalConversationId && cur === originalConversationId) ||
+        cur.includes(conversationId) ||
+        conversationId.includes(cur) ||
+        Boolean(conversationsList.some((c) => c.id === cur && (c.name?.toLowerCase() === userName.toLowerCase() || (c as any).actualId === conversationId)));
+
+      if (isMatch) {
         setTypingUsers((prev) => (prev.includes(userName) ? prev : [...prev, userName]));
         setTimeout(() => {
           setTypingUsers((prev) => prev.filter((u) => u !== userName));
-        }, 3500);
+        }, 4000);
       }
     };
 
-    const handleUserStoppedTyping = ({ conversationId, userName }: { conversationId: string; userName?: string }) => {
-      if (activeIdRef.current === conversationId) {
+    const handleUserStoppedTyping = ({ conversationId, originalConversationId, userName }: { conversationId: string; originalConversationId?: string; userName?: string }) => {
+      const cur = activeIdRef.current;
+      if (!cur) return;
+      const isMatch =
+        cur === conversationId ||
+        (originalConversationId && cur === originalConversationId) ||
+        cur.includes(conversationId) ||
+        conversationId.includes(cur) ||
+        Boolean(conversationsList.some((c) => c.id === cur && (!userName || c.name?.toLowerCase() === userName.toLowerCase())));
+
+      if (isMatch) {
         setTypingUsers((prev) => (userName ? prev.filter((u) => u !== userName) : []));
       }
     };

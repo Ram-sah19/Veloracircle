@@ -383,35 +383,50 @@ const markMessagesRead = async (req, res, next) => {
       return res.status(400).json({ success: false, error: 'messageIds array required' });
     }
 
+    const conversation = await resolveConversation(conversationId, req.user.id);
+    const actualConvoId = conversation ? conversation._id.toString() : conversationId;
+
     const now = new Date();
     await Message.updateMany(
       {
         _id: { $in: messageIds },
-        conversation: conversationId,
         'readBy.user': { $ne: req.user.id },
         isDeleted: false,
       },
       { $push: { readBy: { user: req.user.id, readAt: now } } }
     );
 
+    const readPayload = {
+      conversationId: actualConvoId,
+      originalConversationId: conversationId,
+      messageIds,
+      readByUserId: req.user.id.toString(),
+      readAt: now,
+    };
+
     const io = req.app.get('io');
     if (io) {
-      io.to(`conversation:${conversationId}`).emit('conversation:messages_read', {
-        conversationId,
-        messageIds,
-        readByUserId: req.user.id.toString(),
-        readAt: now,
-      });
+      io.to(`conversation:${actualConvoId}`).emit('conversation:messages_read', readPayload);
+      if (conversationId !== actualConvoId) {
+        io.to(`conversation:${conversationId}`).emit('conversation:messages_read', readPayload);
+      }
+      if (conversation && Array.isArray(conversation.participants)) {
+        conversation.participants.forEach((p) => {
+          io.to(`user:${p.user.toString()}`).emit('conversation:messages_read', readPayload);
+        });
+      }
     }
 
     // Reset unread count for this user in this conversation
-    await Conversation.updateOne(
-      { _id: conversationId, 'participants.user': req.user.id },
-      { $set: { 'participants.$.unreadCount': 0, 'participants.$.lastReadAt': now } }
-    );
+    if (conversation) {
+      await Conversation.updateOne(
+        { _id: conversation._id, 'participants.user': req.user.id },
+        { $set: { 'participants.$.unreadCount': 0, 'participants.$.lastReadAt': now } }
+      );
+    }
     cache.delPattern(`user_convos:${req.user.id}:*`).catch(() => {});
 
-    res.status(200).json({ success: true });
+    res.status(200).json({ success: true, conversationId: actualConvoId });
   } catch (err) {
     next(err);
   }

@@ -117,8 +117,7 @@ function EmojiPicker({
 // ─── Read Receipt Tick ─────────────────────────────────────────────────────────
 
 function ReadTick({ readBy, currentUserId }: { readBy?: string[]; currentUserId?: string }) {
-  if (!readBy) return <Check className="h-3 w-3 text-muted-foreground/60" aria-label="Sent" />;
-  const isRead = readBy.length > 0;
+  const isRead = Array.isArray(readBy) && readBy.some((id) => !currentUserId || id !== currentUserId);
   return isRead ? (
     <CheckCheck className="h-3 w-3 text-primary" aria-label="Read" />
   ) : (

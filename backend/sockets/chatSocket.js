@@ -23,20 +23,86 @@ function initChatSocket(io, socket) {
   });
 
   // Typing indicators
-  socket.on('conversation:typing_start', ({ conversationId, userName }) => {
+  socket.on('conversation:typing_start', async ({ conversationId, userName }) => {
+    if (!conversationId) return;
+    const name = userName || (socket.user ? socket.user.name : 'Someone');
+    const uId = socket.user ? socket.user._id : socket.id;
+
     socket.to(`conversation:${conversationId}`).emit('conversation:user_typing', {
       conversationId,
-      userId: socket.user ? socket.user._id : socket.id,
-      userName: userName || (socket.user ? socket.user.name : 'Someone'),
+      userId: uId,
+      userName: name,
     });
+
+    if (socket.user) {
+      try {
+        const { resolveConversation } = require('../controllers/messageController');
+        const convo = await resolveConversation(conversationId, socket.user._id);
+        if (convo) {
+          const actualId = convo._id.toString();
+          if (actualId !== conversationId) {
+            socket.to(`conversation:${actualId}`).emit('conversation:user_typing', {
+              conversationId: actualId,
+              originalConversationId: conversationId,
+              userId: uId,
+              userName: name,
+            });
+          }
+          convo.participants.forEach((p) => {
+            const pId = p.user.toString();
+            if (pId !== socket.user._id.toString()) {
+              io.to(`user:${pId}`).emit('conversation:user_typing', {
+                conversationId: actualId,
+                originalConversationId: conversationId,
+                userId: uId,
+                userName: name,
+              });
+            }
+          });
+        }
+      } catch {}
+    }
   });
 
-  socket.on('conversation:typing_stop', ({ conversationId, userName }) => {
+  socket.on('conversation:typing_stop', async ({ conversationId, userName }) => {
+    if (!conversationId) return;
+    const name = userName || (socket.user ? socket.user.name : undefined);
+    const uId = socket.user ? socket.user._id : socket.id;
+
     socket.to(`conversation:${conversationId}`).emit('conversation:user_stopped_typing', {
       conversationId,
-      userId: socket.user ? socket.user._id : socket.id,
-      userName: userName || (socket.user ? socket.user.name : undefined),
+      userId: uId,
+      userName: name,
     });
+
+    if (socket.user) {
+      try {
+        const { resolveConversation } = require('../controllers/messageController');
+        const convo = await resolveConversation(conversationId, socket.user._id);
+        if (convo) {
+          const actualId = convo._id.toString();
+          if (actualId !== conversationId) {
+            socket.to(`conversation:${actualId}`).emit('conversation:user_stopped_typing', {
+              conversationId: actualId,
+              originalConversationId: conversationId,
+              userId: uId,
+              userName: name,
+            });
+          }
+          convo.participants.forEach((p) => {
+            const pId = p.user.toString();
+            if (pId !== socket.user._id.toString()) {
+              io.to(`user:${pId}`).emit('conversation:user_stopped_typing', {
+                conversationId: actualId,
+                originalConversationId: conversationId,
+                userId: uId,
+                userName: name,
+              });
+            }
+          });
+        }
+      } catch {}
+    }
   });
 
   // Real-time message broadcast
