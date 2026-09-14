@@ -35,7 +35,7 @@ const topics = [
   {
     icon: MessageSquare,
     title: "Meetings and messaging",
-    body: "Scheduling private meetings, sharing files, and using voice messages.",
+    body: "Scheduling private meetings, sharing files, and real-time messaging.",
   },
 ];
 

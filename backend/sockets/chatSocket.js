@@ -3,8 +3,18 @@ const Conversation = require('../models/Conversation');
 
 function initChatSocket(io, socket) {
   // Join a conversation room
-  socket.on('conversation:join', (conversationId) => {
+  socket.on('conversation:join', async (conversationId) => {
+    if (!conversationId) return;
     socket.join(`conversation:${conversationId}`);
+    if (socket.user && (conversationId.startsWith('dm_') || conversationId.startsWith('dm_inv_'))) {
+      try {
+        const { resolveConversation } = require('../controllers/messageController');
+        const convo = await resolveConversation(conversationId, socket.user._id);
+        if (convo) {
+          socket.join(`conversation:${convo._id.toString()}`);
+        }
+      } catch {}
+    }
   });
 
   // Leave a conversation room
@@ -21,10 +31,11 @@ function initChatSocket(io, socket) {
     });
   });
 
-  socket.on('conversation:typing_stop', ({ conversationId }) => {
+  socket.on('conversation:typing_stop', ({ conversationId, userName }) => {
     socket.to(`conversation:${conversationId}`).emit('conversation:user_stopped_typing', {
       conversationId,
       userId: socket.user ? socket.user._id : socket.id,
+      userName: userName || (socket.user ? socket.user.name : undefined),
     });
   });
 
@@ -44,20 +55,26 @@ function initChatSocket(io, socket) {
       });
 
       // Update conversation
-      await Conversation.findByIdAndUpdate(conversationId, {
-        lastMessage: {
-          body: kind === 'file' ? `[File] ${file?.name || 'Attachment'}` : body || '',
-          sender: socket.user ? socket.user._id : data.senderId,
-          senderName: socket.user ? socket.user.name : data.senderName,
-          sentAt: new Date(),
-          kind: kind || 'text',
+      const updatedConvo = await Conversation.findByIdAndUpdate(
+        conversationId,
+        {
+          lastMessage: {
+            body: kind === 'file' ? `[File] ${file?.name || 'Attachment'}` : body || '',
+            sender: socket.user ? socket.user._id : data.senderId,
+            senderName: socket.user ? socket.user.name : data.senderName,
+            sentAt: new Date(),
+            kind: kind || 'text',
+          },
         },
-      });
+        { new: true }
+      );
 
       const payload = {
-        id: message._id,
-        conversationId,
+        id: message._id.toString(),
+        conversationId: conversationId.toString(),
         author: socket.user ? socket.user.name : data.senderName,
+        senderEmail: socket.user ? socket.user.email : data.senderEmail,
+        senderId: socket.user ? socket.user._id.toString() : data.senderId,
         initials: socket.user ? socket.user.initials : 'VC',
         time: message.createdAt,
         body: message.body,
@@ -69,6 +86,21 @@ function initChatSocket(io, socket) {
 
       // Broadcast to all participants in conversation room
       io.to(`conversation:${conversationId}`).emit('conversation:new_message', payload);
+
+      // Notify all participant personal rooms
+      if (updatedConvo && Array.isArray(updatedConvo.participants)) {
+        updatedConvo.participants.forEach((p) => {
+          const pId = p.user.toString();
+          const senderId = socket.user ? socket.user._id.toString() : data.senderId;
+          if (pId !== senderId) {
+            io.to(`user:${pId}`).emit('conversation:new_message', payload);
+          }
+          io.to(`user:${pId}`).emit('conversation:updated', {
+            conversationId: conversationId.toString(),
+            lastMessage: updatedConvo.lastMessage,
+          });
+        });
+      }
     } catch (err) {
       console.error('[Chat Socket Error]:', err.message);
       socket.emit('error', { message: 'Failed to send message via socket' });
@@ -83,6 +115,11 @@ function initChatSocket(io, socket) {
       userId: socket.user ? socket.user._id : socket.id,
       action,
     });
+  });
+
+  // Poll broadcast
+  socket.on('conversation:poll_broadcast', ({ conversationId, message }) => {
+    io.to(`conversation:${conversationId}`).emit('conversation:poll_created', message);
   });
 }
 

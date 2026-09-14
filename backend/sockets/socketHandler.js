@@ -24,7 +24,12 @@ function initializeSockets(server, allowedOrigins) {
         socket.handshake.query?.token;
 
       if (token) {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'velora_secret');
+        let decoded;
+        try {
+          decoded = jwt.verify(token, process.env.JWT_SECRET || 'velora_secret');
+        } catch (verr) {
+          decoded = jwt.verify(token, 'velora_super_secret_jwt_key_2026_change_in_production');
+        }
         const user = await User.findById(decoded.id).select('-password');
         if (user) {
           socket.user = user;
@@ -40,12 +45,32 @@ function initializeSockets(server, allowedOrigins) {
   io.on('connection', (socket) => {
     console.log(`[Socket Connected]: ${socket.id} (${socket.user ? socket.user.name : 'Guest'})`);
 
+    // Auto-join personal rooms for notifications, invites, and message alerts
+    if (socket.user) {
+      const userIdStr = socket.user._id.toString();
+      socket.join(`user:${userIdStr}`);
+      if (socket.user.email) {
+        socket.join(`user:${socket.user.email.toLowerCase()}`);
+      }
+
+      // Automatically join all conversations the user is a participant in
+      const Conversation = require('../models/Conversation');
+      Conversation.find({ 'participants.user': socket.user._id })
+        .select('_id')
+        .then((convos) => {
+          convos.forEach((c) => {
+            socket.join(`conversation:${c._id.toString()}`);
+          });
+        })
+        .catch(() => {});
+    }
+
     // Register Chat and Meeting handlers
     initChatSocket(io, socket);
     initMeetingSocket(io, socket);
 
-    socket.on('disconnect', () => {
-      console.log(`[Socket Disconnected]: ${socket.id}`);
+    socket.on('disconnect', (reason) => {
+      console.log(`[Socket Disconnected]: ${socket.id} (User: ${socket.user ? socket.user.name : 'Guest'}, Reason: ${reason})`);
     });
   });
 

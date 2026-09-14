@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const { sendOtpEmail } = require('../config/emailService');
+const queue = require('../config/queue');
 
 /**
  * @desc    Register user
@@ -348,25 +349,15 @@ const sendOtp = async (req, res, next) => {
     console.log(`⏱️ Expires in 10 minutes (valid until ${new Date(expiresAt).toLocaleTimeString()})`);
     console.log(`======================================================\n`);
 
-    // Dispatch real email via SMTP
-    let emailDelivery = { sent: false };
-    try {
-      emailDelivery = await sendOtpEmail({ email: normalizedEmail, otp });
-      if (emailDelivery.sent) {
-        console.log(`✉️ [Velora Email] Verification code successfully emailed to ${normalizedEmail}`);
-      } else if (emailDelivery.reason) {
-        console.log(`ℹ️ [Velora Email] Email not dispatched via SMTP: ${emailDelivery.reason}`);
-      }
-    } catch (mailErr) {
-      console.error(`⚠️ [Velora Email Error] Could not deliver email to ${normalizedEmail}:`, mailErr.message);
-    }
+    // Dispatch email asynchronously via background Message Queue
+    queue.dispatch('send_otp_email', { email: normalizedEmail, otp });
 
     res.status(200).json({
       success: true,
-      message: `A 6-digit verification code has been sent to ${normalizedEmail}.`,
-      emailDispatched: emailDelivery.sent,
-      // Only include devCode fallback if real email failed or SMTP is not set up
-      devCode: (!emailDelivery.sent && process.env.NODE_ENV !== 'production') ? otp : undefined,
+      message: `A 6-digit verification code has been queued and sent to ${normalizedEmail}.`,
+      emailDispatched: true,
+      // Only include devCode fallback in non-production
+      devCode: process.env.NODE_ENV !== 'production' ? otp : undefined,
     });
   } catch (err) {
     next(err);

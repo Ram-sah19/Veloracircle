@@ -419,6 +419,15 @@ function handleMeetingLeave(io, socket) {
     socket.leave(`waiting:${meetingId}`);
     socket.meetingId = null;
   }
+
+  // Collaborative Whiteboard sync
+  socket.on('meeting:whiteboard_update', ({ meetingId, elements, appState }) => {
+    socket.to(`meeting:${meetingId}`).emit('meeting:whiteboard_update', {
+      elements,
+      appState,
+      fromSocketId: socket.id,
+    });
+  });
 }
 
 module.exports = initMeetingSocket;

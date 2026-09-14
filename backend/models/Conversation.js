@@ -49,6 +49,13 @@ const conversationSchema = new mongoose.Schema(
       type: String,
       default: 'Private conversation',
     },
+    pinnedMessages: [
+      {
+        messageId: { type: mongoose.Schema.Types.ObjectId, ref: 'Message' },
+        pinnedAt: { type: Date, default: Date.now },
+        pinnedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      },
+    ],
   },
   {
     timestamps: true,
