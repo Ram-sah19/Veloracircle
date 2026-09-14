@@ -1,4 +1,4 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Bookmark,
   CalendarClock,
@@ -141,21 +141,32 @@ export function AppShell({
   rightPanel?: ReactNode;
   flush?: boolean;
 }) {
+  const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [user, setUser] = useState(() => getStoredAuth().user || currentUser);
+
+  // Strictly enforce authentication: no guest user access to app screens
+  useEffect(() => {
+    const auth = getStoredAuth();
+    if (!auth.user && typeof window !== "undefined" && window.location.pathname !== "/") {
+      void navigate({ to: "/" });
+    }
+  }, [navigate]);
 
   useEffect(() => {
     const handleAuthChange = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail && detail.user) {
         setUser(detail.user);
+      } else if (!detail?.user && typeof window !== "undefined" && window.location.pathname !== "/") {
+        void navigate({ to: "/" });
       }
     };
     window.addEventListener("velora_auth_changed", handleAuthChange);
     return () => window.removeEventListener("velora_auth_changed", handleAuthChange);
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

@@ -1,6 +1,7 @@
 require('dotenv').config();
 const http = require('http');
 const path = require('path');
+const cluster = require('cluster');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -10,6 +11,8 @@ const mongoose = require('mongoose');
 const connectDB = require('./config/db');
 const initializeSockets = require('./sockets/socketHandler');
 const errorHandler = require('./middleware/errorHandler');
+const cache = require('./config/cache');
+const queue = require('./config/queue');
 
 // Route imports
 const authRoutes = require('./routes/authRoutes');
@@ -20,11 +23,21 @@ const meetingRoutes = require('./routes/meetingRoutes');
 const fileRoutes = require('./routes/fileRoutes');
 const savedRoutes = require('./routes/savedRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const mentorshipRoutes = require('./routes/mentorshipRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const pushRoutes = require('./routes/pushRoutes');
 
 const app = express();
 const httpServer = http.createServer(app);
 const PORT = process.env.PORT || 5000;
+
+// HTTP Response Compression (optional if installed)
+try {
+  const compression = require('compression');
+  app.use(compression());
+} catch {
+  // compression optional
+}
 
 // Connect to MongoDB
 connectDB();
@@ -32,6 +45,21 @@ connectDB();
 // CORS origin parsing
 const rawOrigins = process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:3000';
 const allowedOrigins = rawOrigins.split(',').map((o) => o.trim());
+
+// Initialize Socket.io atop HTTP Server early so controllers can access it
+const io = initializeSockets(httpServer, allowedOrigins);
+
+// Support Socket.IO cross-worker cluster adapter if running in cluster mode
+if (cluster.isWorker) {
+  try {
+    const { createAdapter } = require('@socket.io/cluster-adapter');
+    io.adapter(createAdapter());
+  } catch {
+    // cluster adapter fallback
+  }
+}
+
+app.set('io', io);
 
 // Security: Helmet headers
 app.use(
@@ -92,6 +120,8 @@ app.use('/api/files', fileRoutes);
 app.use('/api/saved', savedRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/mentorship', mentorshipRoutes);
+app.use('/api/push', pushRoutes);
 
 // Health Check Endpoint
 app.get('/api/health', (req, res) => {
@@ -107,6 +137,16 @@ app.get('/api/health', (req, res) => {
     name: 'Velora Circle API',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
+    process: {
+      pid: process.pid,
+      uptimeSeconds: Math.floor(process.uptime()),
+    },
+    cluster: {
+      isClusterWorker: Boolean(cluster.isWorker),
+      workerId: cluster.worker ? cluster.worker.id : null,
+    },
+    cache: cache.getStatus(),
+    queue: queue.getStatus(),
     database: {
       status: dbStatus,
       readyState: mongoose.connection.readyState,
@@ -119,6 +159,8 @@ app.get('/api/health', (req, res) => {
       realTimeMeetings: 'WebRTC Signaling',
       fileSharing: 'Encrypted at rest',
       privacyArchitecture: 'Strict Role-Based Field Filtering',
+      inMemoryCache: 'Enabled',
+      asyncQueue: 'Enabled',
     },
   });
 });
@@ -172,9 +214,6 @@ app.get('/api/health/test-smtp', async (req, res) => {
 
 // Centralized Error Handling Middleware
 app.use(errorHandler);
-
-// Initialize Socket.io atop HTTP Server
-const io = initializeSockets(httpServer, allowedOrigins);
 
 // Start HTTP + Socket Server
 httpServer.listen(PORT, () => {

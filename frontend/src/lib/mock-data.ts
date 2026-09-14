@@ -17,15 +17,56 @@ export interface AuthUser {
 
 const AUTH_USER_KEY = "velora_auth_user";
 const AUTH_TOKEN_KEY = "velora_auth_token";
+const AUTH_TIMESTAMP_KEY = "velora_auth_timestamp";
+const MAX_SESSION_AGE_MS = 20 * 24 * 60 * 60 * 1000; // 20 days in ms
+
+function isJwtExpired(token: string): boolean {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return false;
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    );
+    const payload = JSON.parse(jsonPayload);
+    if (typeof payload.exp === "number") {
+      return Date.now() >= payload.exp * 1000;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 export function getStoredAuth(): { user: AuthUser | null; token: string | null } {
   if (typeof window === "undefined") return { user: null, token: null };
   try {
     const rawUser = localStorage.getItem(AUTH_USER_KEY);
     const token = localStorage.getItem(AUTH_TOKEN_KEY);
+    const timestampStr = localStorage.getItem(AUTH_TIMESTAMP_KEY);
+
+    if (!rawUser || !token) {
+      return { user: null, token: null };
+    }
+
+    // Check 20-day age threshold
+    const loginTime = timestampStr ? parseInt(timestampStr, 10) : 0;
+    const isExceeded20Days = loginTime > 0 && Date.now() - loginTime > MAX_SESSION_AGE_MS;
+
+    // Check JWT payload expiration
+    const isExpired = isExceeded20Days || isJwtExpired(token);
+
+    if (isExpired) {
+      clearAuthSession();
+      return { user: null, token: null };
+    }
+
     return {
-      user: rawUser ? JSON.parse(rawUser) : null,
-      token: token || null,
+      user: JSON.parse(rawUser),
+      token,
     };
   } catch {
     return { user: null, token: null };
@@ -36,6 +77,7 @@ export function saveAuthSession(user: AuthUser, token: string) {
   if (typeof window !== "undefined") {
     localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
     localStorage.setItem(AUTH_TOKEN_KEY, token);
+    localStorage.setItem(AUTH_TIMESTAMP_KEY, Date.now().toString());
     // Mutate exported object in place so modules referencing currentUser reflect new session
     Object.assign(currentUser, user);
     window.dispatchEvent(new CustomEvent("velora_auth_changed", { detail: { user, token } }));
@@ -46,10 +88,13 @@ export function clearAuthSession() {
   if (typeof window !== "undefined") {
     localStorage.removeItem(AUTH_USER_KEY);
     localStorage.removeItem(AUTH_TOKEN_KEY);
-    currentUser.name = "Guest";
+    localStorage.removeItem(AUTH_TIMESTAMP_KEY);
+    currentUser.name = "";
     currentUser.email = "";
-    currentUser.initials = "G";
-    currentUser.role = "guest";
+    currentUser.initials = "";
+    currentUser.handle = "";
+    currentUser.role = "member";
+    currentUser.designation = "";
     window.dispatchEvent(new CustomEvent("velora_auth_changed", { detail: { user: null, token: null } }));
   }
 }
@@ -57,15 +102,57 @@ export function clearAuthSession() {
 const initialAuth = getStoredAuth();
 
 export const currentUser: AuthUser = initialAuth.user || {
-  name: "Guest User",
-  handle: "@guest",
-  email: "guest@velora.io",
-  initials: "GU",
+  name: "",
+  handle: "",
+  email: "",
+  initials: "VC",
   status: "Available",
   role: "member" as Role,
   avatar: null,
   authProvider: "local",
 };
+
+export function clearAllMentorshipData() {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(CONVERSATIONS_STORAGE_KEY);
+    localStorage.removeItem(INVITATIONS_STORAGE_KEY);
+
+    // Clear all direct chat messages and cached conversations
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (
+        key &&
+        (key.startsWith(MESSAGES_STORAGE_PREFIX) ||
+          key.startsWith("dm_") ||
+          key.startsWith("msg_") ||
+          key.includes("velora_messages") ||
+          key.includes("messages"))
+      ) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+
+    window.dispatchEvent(new CustomEvent("velora_conversations_updated", { detail: [] }));
+    window.dispatchEvent(new CustomEvent("velora_invitations_changed", { detail: [] }));
+    window.dispatchEvent(
+      new CustomEvent("velora_messages_updated", { detail: { convoId: "", messages: [] } })
+    );
+  } catch (err) {
+    console.error("Error clearing mentorship data:", err);
+  }
+}
+
+// Auto-execute immediate clean wipe as requested
+if (typeof window !== "undefined") {
+  const WIPE_ONCE_KEY = "velora_wipe_reset_20260913_akash_clean_v4";
+  if (!localStorage.getItem(WIPE_ONCE_KEY)) {
+    clearAllMentorshipData();
+    localStorage.setItem(WIPE_ONCE_KEY, "done");
+  }
+}
 
 export type Conversation = {
   id: string;
@@ -195,6 +282,38 @@ export function syncConversationsWithInvitations(activeUser?: AuthUser | null): 
     return convo;
   });
 
+  // Also ensure all accepted invitations have an active conversation
+  invs.forEach((inv) => {
+    if (inv.status === "accepted") {
+      const convoId = inv.conversationId || `dm_${inv.id}`;
+      const exists = updatedConvos.some(
+        (c) => c.id === convoId || c.id === inv.conversationId || c.id === `dm_${inv.id}`
+      );
+      if (!exists) {
+        const isSenderCurr =
+          (inv.sender.email && curr.email && inv.sender.email.toLowerCase() === curr.email.toLowerCase()) ||
+          (curr.id && inv.sender.id === curr.id) ||
+          curr.handle?.toLowerCase() === inv.sender.handle.toLowerCase() ||
+          curr.name?.toLowerCase() === inv.sender.name.toLowerCase();
+        const partner = isSenderCurr ? inv.recipient : inv.sender;
+        const isMentor = curr.designation === "mentor";
+        const partnerRole = isMentor ? "Trainee" : "Mentor";
+        updatedConvos.unshift({
+          id: convoId,
+          name: partner.name,
+          initials: partner.initials,
+          kind: "direct",
+          privacy: `Direct Mentorship · ${partnerRole}`,
+          partnerEmail: partner.email,
+          partnerRole,
+          preview: inv.note ? `Note: "${inv.note}"` : "Mentorship connected. Say hello!",
+          time: "Just now",
+        });
+        changed = true;
+      }
+    }
+  });
+
   if (changed) {
     saveStoredConversations(updatedConvos);
     return updatedConvos;
@@ -206,7 +325,41 @@ export function getStoredMessages(convoId: string): Message[] {
   if (typeof window === "undefined" || !convoId) return [];
   try {
     const raw = localStorage.getItem(`${MESSAGES_STORAGE_PREFIX}${convoId}`);
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const list: Message[] = JSON.parse(raw);
+    if (!Array.isArray(list)) return [];
+
+    // First pass: collect server message bodies
+    const serverBodies = new Set<string>();
+    list.forEach((m) => {
+      if (m && m.id && !m.id.startsWith("msg_") && m.body) {
+        serverBodies.add(`${(m.author || "").toLowerCase()}_${m.body.trim()}`);
+      }
+    });
+
+    // Deduplicate: drop temp msg_ messages if real server message exists
+    const seenIds = new Set<string>();
+    const seenSignatures = new Set<string>();
+    return list.filter((m) => {
+      if (!m || !m.id) return false;
+      if (m.kind === "voice" || m.body === "🎤 Voice message") return false;
+      if (seenIds.has(m.id)) return false;
+
+      const bodyKey = `${(m.author || "").toLowerCase()}_${(m.body || "").trim()}`;
+      // Drop temp message if server version exists
+      if (m.id.startsWith("msg_") && serverBodies.has(bodyKey)) {
+        return false;
+      }
+
+      if (seenSignatures.has(bodyKey) && m.body?.trim()) {
+        return false;
+      }
+      if (m.body?.trim()) {
+        seenSignatures.add(bodyKey);
+      }
+      seenIds.add(m.id);
+      return true;
+    });
   } catch {
     return [];
   }
@@ -214,9 +367,42 @@ export function getStoredMessages(convoId: string): Message[] {
 
 export function saveStoredMessage(convoId: string, message: Message): Message[] {
   if (typeof window === "undefined" || !convoId) return [message];
+  if (message.kind === "voice" || message.body === "🎤 Voice message") return getStoredMessages(convoId);
   try {
     const current = getStoredMessages(convoId);
-    const updated = [...current, message];
+    // If exact ID already exists, return current without modifying
+    if (current.some((m) => m.id === message.id)) {
+      return current;
+    }
+
+    const msgBody = (message.body || "").trim();
+
+    // If this is a server message replacing an optimistic message with temp ID
+    const optimisticIndex = current.findIndex(
+      (m) =>
+        m.id.startsWith("msg_") &&
+        (m.body || "").trim() === msgBody
+    );
+
+    let updated: Message[];
+    if (optimisticIndex !== -1) {
+      updated = [...current];
+      updated[optimisticIndex] = message;
+    } else {
+      // Check if duplicate server message with same body and author
+      const isDuplicate = current.some(
+        (m) =>
+          !m.id.startsWith("msg_") &&
+          !message.id.startsWith("msg_") &&
+          (m.body || "").trim() === msgBody &&
+          (m.author === message.author || m.senderEmail === message.senderEmail)
+      );
+      if (isDuplicate && msgBody) {
+        return current;
+      }
+      updated = [...current, message];
+    }
+
     localStorage.setItem(`${MESSAGES_STORAGE_PREFIX}${convoId}`, JSON.stringify(updated));
     window.dispatchEvent(
       new CustomEvent("velora_messages_updated", { detail: { convoId, messages: updated } })
@@ -246,14 +432,23 @@ export type Message = {
   self?: boolean;
   time: string;
   body?: string;
-  kind?: "text" | "file" | "image" | "voice";
-  file?: { name: string; size: string; url?: string };
-  reactions?: { emoji: string; count: number }[];
+  kind?: "text" | "file" | "image" | "poll" | "code";
+  file?: { name: string; size: string; url?: string; duration?: string };
+  reactions?: { emoji: string; count: number; userReacted?: boolean }[];
   replyTo?: { author: string; body: string };
   senderEmail?: string;
   senderId?: string;
   role?: string;
+  readBy?: string[]; // array of user IDs who read this message
+  codeLang?: string; // language for code snippets
+  isPinned?: boolean;
+  poll?: {
+    question: string;
+    options: { text: string; votes: number; votedByMe?: boolean }[];
+    closed?: boolean;
+  };
 };
+
 
 export const messageThread: Message[] = [];
 

@@ -13,6 +13,7 @@ import {
   MonitorUp,
   MonitorX,
   MessageSquare,
+  PenTool,
   PhoneOff,
   Send,
   Smile,
@@ -42,6 +43,7 @@ import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { VeloraLogo } from "@/components/velora/logo";
 import { Avatar, IconButton, PrivacyBadge, SecureIndicator } from "@/components/velora/primitives";
+import { CollaborativeWhiteboard } from "@/components/velora/whiteboard";
 import {
   currentUser,
   ensureDirectConversation,
@@ -228,6 +230,7 @@ function MeetingRoom() {
   const [screenSharing, setScreenSharing] = useState(false);
   const [handRaised, setHandRaised] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [whiteboardOpen, setWhiteboardOpen] = useState(false);
   const [peopleOpen, setPeopleOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [activeMentorships, setActiveMentorships] = useState<MentorshipInvitation[]>([]);
@@ -679,6 +682,11 @@ function MeetingRoom() {
     socket.on("meeting:user_reaction", ({ userName, emoji }: { userName: string; emoji: string }) => {
       setFloatingReaction({ emoji, userName });
       setTimeout(() => setFloatingReaction(null), 3000);
+    });
+
+    // Real-time Collaborative Whiteboard stroke update
+    socket.on("meeting:whiteboard_update", (data: unknown) => {
+      window.dispatchEvent(new CustomEvent("velora_whiteboard_remote", { detail: data }));
     });
 
     // In-meeting Chat Message
@@ -1241,6 +1249,14 @@ function MeetingRoom() {
             onClick={toggleScreenShare}
           />
           <IconButton
+            icon={PenTool}
+            label={whiteboardOpen ? "Close whiteboard" : "Whiteboard"}
+            variant="solid"
+            active={whiteboardOpen}
+            className={cn("h-12 w-12", whiteboardOpen && "text-primary ring-2 ring-primary/50")}
+            onClick={() => setWhiteboardOpen((o) => !o)}
+          />
+          <IconButton
             icon={Hand}
             label={handRaised ? "Lower hand" : "Raise hand"}
             variant="solid"
@@ -1632,6 +1648,15 @@ function MeetingRoom() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Real-time Collaborative Whiteboard */}
+      {whiteboardOpen && (
+        <CollaborativeWhiteboard
+          meetingId={meetingId}
+          socket={socketRef.current}
+          onClose={() => setWhiteboardOpen(false)}
+        />
+      )}
     </div>
   );
 }

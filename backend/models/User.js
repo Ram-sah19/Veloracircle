@@ -103,6 +103,15 @@ const userSchema = new mongoose.Schema(
         default: true,
       },
     },
+    pushSubscriptions: [
+      {
+        endpoint: { type: String },
+        keys: {
+          p256dh: { type: String },
+          auth: { type: String },
+        },
+      },
+    ],
     lastActive: {
       type: Date,
       default: Date.now,
@@ -140,7 +149,7 @@ userSchema.methods.getSignedJwtToken = function () {
     { id: this._id, role: this.role, email: this.email },
     process.env.JWT_SECRET || 'velora_secret',
     {
-      expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+      expiresIn: process.env.JWT_EXPIRES_IN || '20d',
     }
   );
 };

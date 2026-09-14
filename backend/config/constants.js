@@ -34,6 +34,8 @@ const MESSAGE_KINDS = {
   FILE: 'file',
   IMAGE: 'image',
   VOICE: 'voice',
+  POLL: 'poll',
+  CODE: 'code',
 };
 
 const MEETING_STATUS = {

@@ -3,16 +3,16 @@ const { MESSAGE_KINDS } = require('../config/constants');
 
 const reactionSchema = new mongoose.Schema(
   {
-    emoji: {
-      type: String,
-      required: true,
-    },
-    users: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-      },
-    ],
+    emoji: { type: String, required: true },
+    users: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  },
+  { _id: false }
+);
+
+const readBySchema = new mongoose.Schema(
+  {
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    readAt: { type: Date, default: Date.now },
   },
   { _id: false }
 );
@@ -25,16 +25,8 @@ const messageSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-    sender: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      required: true,
-    },
-    body: {
-      type: String,
-      trim: true,
-      default: '',
-    },
+    sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    body: { type: String, trim: true, default: '' },
     kind: {
       type: String,
       enum: Object.values(MESSAGE_KINDS),
@@ -45,6 +37,7 @@ const messageSchema = new mongoose.Schema(
       size: { type: String, default: null },
       url: { type: String, default: null },
       mimeType: { type: String, default: null },
+      duration: { type: String, default: null },
     },
     replyTo: {
       messageId: { type: mongoose.Schema.Types.ObjectId, ref: 'Message', default: null },
@@ -52,17 +45,26 @@ const messageSchema = new mongoose.Schema(
       body: { type: String, default: null },
     },
     reactions: [reactionSchema],
-    isDeleted: {
-      type: Boolean,
-      default: false,
+    readBy: [readBySchema],
+    pinnedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    pinnedAt: { type: Date, default: null },
+    poll: {
+      question: { type: String, default: null },
+      options: [
+        {
+          text: { type: String },
+          votes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+        },
+      ],
+      closedAt: { type: Date, default: null },
     },
+    codeLang: { type: String, default: null },
+    isDeleted: { type: Boolean, default: false },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
-// Index for chronological querying of messages inside a conversation
 messageSchema.index({ conversation: 1, createdAt: 1 });
+messageSchema.index({ conversation: 1, body: 'text' });
 
 module.exports = mongoose.model('Message', messageSchema);

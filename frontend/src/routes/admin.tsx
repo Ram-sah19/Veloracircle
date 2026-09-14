@@ -12,6 +12,7 @@ import {
   Search,
   Send,
   ShieldCheck,
+  Trash2,
   UserCheck,
   UserPlus,
   Users,
@@ -19,6 +20,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { getSocket } from "@/lib/socket";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -45,6 +47,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { AppShell } from "@/components/velora/app-shell";
 import { Avatar, EmptyState, PrivacyBadge, SectionHeading } from "@/components/velora/primitives";
 import {
+  clearAllMentorshipData,
   currentUser,
   ensureDirectConversation,
   generateMeetingId,
@@ -112,102 +115,75 @@ function MentorshipPage() {
   const [meetingDate, setMeetingDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [meetingTime, setMeetingTime] = useState("16:00");
   const [meetingDuration, setMeetingDuration] = useState("45");
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
 
-  // Load invitations and sync real profile names
-  useEffect(() => {
-    const stored = getStoredInvitations();
-    setInvitations(stored);
-
-    const syncRealNames = async (invs: MentorshipInvitation[]) => {
-      let changed = false;
-      const updated = await Promise.all(
-        invs.map(async (inv) => {
-          let modified = false;
-          const copy: MentorshipInvitation = {
-            ...inv,
-            sender: { ...inv.sender },
-            recipient: { ...inv.recipient },
-          };
-
-          const userEmailPrefix = user.email ? user.email.split("@")[0].toLowerCase() : "";
-
-          const isSenderCurr =
-            (inv.sender.email && user.email && inv.sender.email.toLowerCase() === user.email.toLowerCase()) ||
-            user.handle?.toLowerCase() === copy.sender.handle.toLowerCase() ||
-            user.name?.toLowerCase() === copy.sender.name.toLowerCase() ||
-            Boolean(userEmailPrefix && copy.sender.name.toLowerCase() === userEmailPrefix) ||
-            Boolean(userEmailPrefix && copy.sender.handle.toLowerCase() === `@${userEmailPrefix}`);
-
-          const isRecipCurr =
-            (inv.recipient.email && user.email && inv.recipient.email.toLowerCase() === user.email.toLowerCase()) ||
-            user.handle?.toLowerCase() === copy.recipient.handle.toLowerCase() ||
-            user.name?.toLowerCase() === copy.recipient.name.toLowerCase() ||
-            Boolean(userEmailPrefix && copy.recipient.name.toLowerCase() === userEmailPrefix) ||
-            Boolean(userEmailPrefix && copy.recipient.handle.toLowerCase() === `@${userEmailPrefix}`);
-
-          // 1. Sync current user's side with active profile
-          if (isSenderCurr) {
-            if (copy.sender.name !== user.name && user.name) {
-              copy.sender.name = user.name;
-              copy.sender.initials = user.initials;
-              if (user.avatar) copy.sender.avatar = user.avatar;
-              if (user.designation) copy.sender.designation = user.designation;
-              if (user.email) copy.sender.email = user.email;
-              modified = true;
-            }
-          }
-
-          if (isRecipCurr) {
-            if (copy.recipient.name !== user.name && user.name) {
-              copy.recipient.name = user.name;
-              copy.recipient.initials = user.initials;
-              if (user.avatar) copy.recipient.avatar = user.avatar;
-              if (user.designation) copy.recipient.designation = user.designation;
-              if (user.email) copy.recipient.email = user.email;
-              modified = true;
-            }
-          }
-
-          // 2. Lookup partner in MongoDB backend to fetch their REAL profile name
-          const other = isSenderCurr ? copy.recipient : copy.sender;
-          try {
-            const queryTerm = other.email || other.handle?.replace(/^@/, "") || other.name;
-            const res = await fetch(
-              `http://localhost:5000/api/auth/lookup?query=${encodeURIComponent(queryTerm)}`
-            );
-            const data = await res.json();
-            if (data.success && data.user && data.user.name) {
-              if (other.name !== data.user.name) {
-                other.name = data.user.name;
-                other.handle = data.user.handle || other.handle;
-                other.initials = data.user.initials || other.initials;
-                if (data.user.avatar) other.avatar = data.user.avatar;
-                if (data.user.designation) other.designation = data.user.designation;
-                if (data.user.email) other.email = data.user.email;
-                modified = true;
-              }
-            }
-          } catch {
-            // ignore network error
-          }
-
-          if (modified) changed = true;
-          return copy;
-        })
-      );
-
-      if (changed) {
-        saveStoredInvitations(updated);
-        setInvitations(updated);
+  // Fetch invitations from backend with local fallback
+  const fetchBackendInvitations = async () => {
+    const { token } = getStoredAuth();
+    if (token) {
+      try {
+        const res = await fetch("http://localhost:5000/api/mentorship/invitations", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (data.success && Array.isArray(data.data)) {
+          setInvitations(data.data);
+          saveStoredInvitations(data.data);
+          return data.data;
+        }
+      } catch {
+        // network fallback
       }
+    }
+    const local = getStoredInvitations();
+    setInvitations(local);
+    return local;
+  };
+
+  const handleClearAll = async () => {
+    const { token } = getStoredAuth();
+    if (token) {
+      try {
+        await fetch("http://localhost:5000/api/mentorship/reset", {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch {
+        // network fallback
+      }
+    }
+    clearAllMentorshipData();
+    setInvitations([]);
+    setClearConfirmOpen(false);
+    toast.success("All messages, conversations, and invitations have been cleared clean.");
+  };
+
+  // Load invitations and connect real-time Socket.IO
+  useEffect(() => {
+    void fetchBackendInvitations();
+
+    const socket = getSocket();
+
+    const handleReceived = (newInv: MentorshipInvitation) => {
+      void fetchBackendInvitations();
+      toast.info(`New mentorship request from ${newInv.sender.name}!`);
     };
 
-    syncRealNames(stored);
+    const handleAccepted = () => {
+      void fetchBackendInvitations();
+      toast.success(`Mentorship invitation accepted!`);
+    };
+
+    if (socket) {
+      socket.on("mentorship:invitation_received", handleReceived);
+      socket.on("mentorship:invitation_accepted", handleAccepted);
+    }
 
     const handleAuthChange = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail && detail.user) {
         setUser(detail.user);
+        void fetchBackendInvitations();
       }
     };
 
@@ -220,11 +196,16 @@ function MentorshipPage() {
 
     window.addEventListener("velora_auth_changed", handleAuthChange);
     window.addEventListener("velora_invitations_changed", handleInvChange);
+
     return () => {
+      if (socket) {
+        socket.off("mentorship:invitation_received", handleReceived);
+        socket.off("mentorship:invitation_accepted", handleAccepted);
+      }
       window.removeEventListener("velora_auth_changed", handleAuthChange);
       window.removeEventListener("velora_invitations_changed", handleInvChange);
     };
-  }, [user]);
+  }, [user?.id, user?.email]);
 
   // Live lookup when email changes in invite dialog
   const handleEmailBlur = async () => {
@@ -266,27 +247,50 @@ function MentorshipPage() {
     }
 
     setSendingInvite(true);
+    const { token } = getStoredAuth();
+
+    try {
+      if (token) {
+        const res = await fetch("http://localhost:5000/api/mentorship/invite", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            recipientEmail: email,
+            recipientName: recipientName.trim() || undefined,
+            note: inviteNote.trim() || undefined,
+          }),
+        });
+        const data = await res.json();
+        if (data.success && data.data) {
+          const updated = [data.data, ...invitations.filter((i) => i.id !== data.data.id)];
+          saveStoredInvitations(updated);
+          setInvitations(updated);
+          toast.success(`Mentorship invitation sent to ${data.data.recipient.name}!`);
+          setRecipientEmail("");
+          setRecipientName("");
+          setRecipientLookupFound(null);
+          setInviteNote("");
+          setInviteModalOpen(false);
+          setSendingInvite(false);
+          return;
+        } else if (data.error) {
+          toast.error(data.error);
+          setSendingInvite(false);
+          return;
+        }
+      }
+    } catch {
+      // offline fallback to local invite
+    }
 
     let resolvedName = recipientName.trim();
     let resolvedHandle = `@${email.split("@")[0]}`;
     let resolvedInitials = email.substring(0, 2).toUpperCase();
     let resolvedDesignation = isMentor ? "intern" : "mentor";
     let resolvedAvatar = undefined;
-
-    // Check backend lookup for recipient
-    try {
-      const res = await fetch(`http://localhost:5000/api/auth/lookup?email=${encodeURIComponent(email)}`);
-      const data = await res.json();
-      if (data.success && data.user) {
-        if (!resolvedName) resolvedName = data.user.name;
-        resolvedHandle = data.user.handle || resolvedHandle;
-        resolvedInitials = data.user.initials || resolvedInitials;
-        resolvedDesignation = data.user.designation || resolvedDesignation;
-        resolvedAvatar = data.user.avatar;
-      }
-    } catch {
-      // offline fallback
-    }
 
     if (!resolvedName) {
       const raw = email.split("@")[0];
@@ -380,13 +384,33 @@ function MentorshipPage() {
   };
 
   // Accept invitation handler
-  const handleAccept = (invId: string) => {
-    let acceptedInv: MentorshipInvitation | undefined;
+  const handleAccept = async (invId: string) => {
+    const { token } = getStoredAuth();
+    let acceptedData: MentorshipInvitation | undefined;
+    let convoId = `dm_${invId}`;
+
+    if (token) {
+      try {
+        const res = await fetch(`http://localhost:5000/api/mentorship/invitations/${invId}/accept`, {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (data.success && data.data) {
+          acceptedData = data.data;
+          convoId = data.conversationId || acceptedData.conversationId || convoId;
+        }
+      } catch {
+        // offline fallback
+      }
+    }
+
+    let acceptedInv: MentorshipInvitation | undefined = acceptedData;
     const updated = invitations.map((inv) => {
       if (inv.id === invId) {
-        const convoId = `dm_${inv.id}`;
         acceptedInv = {
           ...inv,
+          ...(acceptedData || {}),
           status: "accepted" as const,
           conversationId: convoId,
         };
@@ -400,12 +424,13 @@ function MentorshipPage() {
     if (acceptedInv) {
       const isSender =
         (acceptedInv.sender.email && user.email && acceptedInv.sender.email.toLowerCase() === user.email.toLowerCase()) ||
+        (user.id && acceptedInv.sender.id === user.id) ||
         user.handle?.toLowerCase() === acceptedInv.sender.handle.toLowerCase() ||
         user.name?.toLowerCase() === acceptedInv.sender.name.toLowerCase();
       const partner = isSender ? acceptedInv.recipient : acceptedInv.sender;
       const partnerRole = isMentor ? "Trainee" : "Mentor";
       ensureDirectConversation({
-        id: acceptedInv.conversationId || `dm_${acceptedInv.id}`,
+        id: acceptedInv.conversationId || convoId,
         name: partner.name,
         initials: partner.initials,
         kind: "direct",
@@ -554,7 +579,18 @@ function MentorshipPage() {
   };
 
   // Decline invitation handler
-  const handleDecline = (invId: string) => {
+  const handleDecline = async (invId: string) => {
+    const { token } = getStoredAuth();
+    if (token) {
+      try {
+        await fetch(`http://localhost:5000/api/mentorship/invitations/${invId}/decline`, {
+          method: "PUT",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      } catch {
+        // offline fallback
+      }
+    }
     const updated = invitations.map((inv) => {
       if (inv.id === invId) {
         return { ...inv, status: "declined" as const };
@@ -566,16 +602,47 @@ function MentorshipPage() {
     toast.info("Mentorship invitation declined.");
   };
 
-  // Filter connections and invites
-  const activeConnections = invitations.filter((i) => i.status === "accepted");
-  const pendingIncoming = invitations.filter(
-    (i) =>
-      i.status === "pending" &&
-      i.recipient.name.toLowerCase() === user.email.split("@")[0].toLowerCase()
-  );
-  const pendingOutgoing = invitations.filter(
-    (i) => i.status === "pending" && i.sender.handle === user.handle
-  );
+  // Filter connections and invites accurately
+  const userEmail = user.email ? user.email.toLowerCase() : "";
+  const userId = user.id ? user.id.toString() : "";
+  const userHandle = user.handle ? user.handle.toLowerCase() : "";
+
+  const activeConnections = invitations.filter((i) => {
+    if (i.status !== "accepted") return false;
+    const sEmail = i.sender?.email?.toLowerCase() || "";
+    const rEmail = i.recipient?.email?.toLowerCase() || "";
+    const sId = i.sender?.id?.toString() || "";
+    const rId = i.recipient?.id?.toString() || "";
+    return (
+      (userEmail && (sEmail === userEmail || rEmail === userEmail)) ||
+      (userId && (sId === userId || rId === userId)) ||
+      (userHandle && (i.sender?.handle?.toLowerCase() === userHandle || i.recipient?.handle?.toLowerCase() === userHandle))
+    );
+  });
+
+  const pendingIncoming = invitations.filter((i) => {
+    if (i.status !== "pending") return false;
+    const rEmail = i.recipient?.email?.toLowerCase() || "";
+    const rId = i.recipient?.id?.toString() || "";
+    const rHandle = i.recipient?.handle?.toLowerCase() || "";
+    return (
+      (userEmail && rEmail === userEmail) ||
+      (userId && rId === userId) ||
+      (userHandle && rHandle === userHandle)
+    );
+  });
+
+  const pendingOutgoing = invitations.filter((i) => {
+    if (i.status !== "pending") return false;
+    const sEmail = i.sender?.email?.toLowerCase() || "";
+    const sId = i.sender?.id?.toString() || "";
+    const sHandle = i.sender?.handle?.toLowerCase() || "";
+    return (
+      (userEmail && sEmail === userEmail) ||
+      (userId && sId === userId) ||
+      (userHandle && sHandle === userHandle)
+    );
+  });
 
   return (
     <AppShell>
@@ -597,6 +664,39 @@ function MentorshipPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <Dialog open={clearConfirmOpen} onOpenChange={setClearConfirmOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-muted-foreground hover:text-destructive hover:border-destructive/40"
+                  title="Reset and clear all mentorship invitations, connections, and chat messages"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  <span className="hidden sm:inline text-xs">Reset All Chats</span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2 text-destructive">
+                    <Trash2 className="h-5 w-5" />
+                    <span>Reset All Mentorship Data</span>
+                  </DialogTitle>
+                  <DialogDescription className="text-xs">
+                    This will permanently clear all direct chat messages, active mentorship connections, and pending invitations from your local browser so you can start completely fresh.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter className="gap-2 sm:gap-0 pt-2">
+                  <Button variant="ghost" onClick={() => setClearConfirmOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button variant="destructive" onClick={handleClearAll}>
+                    Yes, Delete Everything
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
             <Dialog open={inviteModalOpen} onOpenChange={setInviteModalOpen}>
               <DialogTrigger asChild>
                 <Button className="gap-2">
@@ -726,9 +826,10 @@ function MentorshipPage() {
               <div className="grid gap-4 sm:grid-cols-2">
                 {activeConnections.map((conn) => {
                   const isSender =
+                    (user.email && conn.sender.email && conn.sender.email.toLowerCase() === user.email.toLowerCase()) ||
+                    (user.id && conn.sender.id === user.id) ||
                     user.handle?.toLowerCase() === conn.sender.handle.toLowerCase() ||
-                    user.name?.toLowerCase() === conn.sender.name.toLowerCase() ||
-                    Boolean(user.email && conn.sender.name.toLowerCase() === user.email.split("@")[0].toLowerCase());
+                    user.name?.toLowerCase() === conn.sender.name.toLowerCase();
                   const partner = isSender ? conn.recipient : conn.sender;
                   return (
                     <div
